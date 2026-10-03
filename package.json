@@ -16,6 +16,7 @@
     "knip": "knip",
     "db:generate": "pnpm --filter @effectief/db db:generate",
     "db:migrate": "pnpm --filter @effectief/db db:migrate",
+    "db:roles": "pnpm --filter @effectief/db db:roles",
     "prepare": "lefthook install",
     "test:e2e": "turbo run test:e2e"
   },

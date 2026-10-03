@@ -16,7 +16,9 @@ concurrency:
 env:
   NODE_ENV: test
   LOG_LEVEL: silent
-  DATABASE_URL: postgres://effectief:effectief@localhost:5432/effectief
+  DATABASE_MIGRATION_URL: postgres://effectief:effectief@localhost:5432/effectief
+  DATABASE_URL: postgres://effectief_app:effectief_app@localhost:5432/effectief
+  DATABASE_AUTH_URL: postgres://effectief_auth:effectief_auth@localhost:5432/effectief
   REDIS_URL: redis://localhost:6379
   API_HOST: 127.0.0.1
   API_PORT: 3000
@@ -68,6 +70,10 @@ jobs:
 
       - name: Migrations apply
         run: pnpm db:migrate
+
+      # Login roles for the app and Better Auth; tests run as these, never as the owner (#026, #031).
+      - name: Database login roles
+        run: pnpm db:roles
 
       - name: Migration drift
         run: |

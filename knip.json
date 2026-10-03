@@ -9,6 +9,9 @@
     "packages/*": {},
     "apps/worker": {
       "entry": ["scripts/*.ts"]
+    },
+    "packages/db": {
+      "entry": ["scripts/*.ts"]
     }
   },
   "ignoreIssues": {

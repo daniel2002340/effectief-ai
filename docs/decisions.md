@@ -28,7 +28,7 @@ Format:
 
 ## #002 TypeScript end-to-end in een pnpm/Turborepo-monorepo
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** Solo-ontwikkeling; Nango-integratiefuncties zijn TypeScript.
 - **Beslissing:** Eén taal van integratie tot UI: Fastify (api), BullMQ (worker), React + Vite (web), gedeelde Zod-schema's.
 - **Alternatieven:** Next.js full-stack (onnodige SSR voor een dashboard achter login, neiging tot Vercel-lock-in).
@@ -99,7 +99,7 @@ Format:
 
 ## #011 Deny-by-default route-authenticatie
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** In v1 groeide een lijst van ~20 uitzonderingen op login, bij elke "fix 401" één meer.
 - **Beslissing:** Elke route declareert zijn auth-type; de server weigert te starten als een route er geen heeft.
 - **Alternatieven:** Globale auth met uitzonderingslijst (v1-aanpak).
@@ -107,7 +107,7 @@ Format:
 
 ## #012 Build: ESM, gebundeld met tsup, eigen Dockerfile
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** v1 draaide in productie met tsx, had CJS/ESM-problemen en twee React-versies in één workspace.
 - **Beslissing:** Alleen ESM; api en worker gebundeld met tsup tot één artifact dat met node draait; eigen Dockerfile; `--frozen-lockfile` overal; één React- en TypeScript-versie.
 - **Alternatieven:** tsx in productie; vertrouwen op build-caching van de host.
@@ -216,7 +216,7 @@ Format:
 
 ## #026 Aparte databaserol zonder BYPASSRLS, al in sessie 1
 - **Datum:** 2026-10-03
-- **Status:** geaccepteerd
+- **Status:** vervangen door #031
 - **Context:** #018 stelde dit uit tot de eerste tabel. Zolang app en tests als superuser of tabeleigenaar draaien, dwingt RLS niets af en bewijzen isolatietests niets.
 - **Beslissing:** Migraties draaien als eigenaar; app en tests als een aparte rol zonder BYPASSRLS en zonder eigenaarschap. Elke tenant-tabel heeft `FORCE ROW LEVEL SECURITY`. Een test faalt als de app-rol eigenaar is of BYPASSRLS heeft. Sessie 1 (de eerste tabel) is pas klaar als dit allemaal staat.
 - **Alternatieven:** Uitstellen tot later (#018); te riskant, want dan bestaan er al tabellen en tests die onder de verkeerde rol groen zijn.
@@ -245,3 +245,19 @@ Format:
 - **Beslissing:** `createBuilders()` in apps/api levert `procedure` (sessie-middleware, standaard) en `publicProcedure` (expliciet benoemde uitzondering). Het contract in packages/shared beschrijft alleen vormen, geen auth. De Fastify-route die oRPC serveert houdt `auth: 'contract'`.
 - **Alternatieven:** `meta.auth` per procedure (#022): een vergeten declaratie werd pas bij opstarten gevangen, en auth stond in het gedeelde contract.
 - **Gevolgen:** Een nieuwe procedure is zonder extra werk afgeschermd. Het sessiesysteem vult de middleware in `apps/api/src/orpc/builders.ts` in.
+
+## #030 Authenticatie met Better Auth (organisatie = tenant)
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** Sessie-middleware (#029) en tenants hebben een auth-systeem nodig. Eigen auth bouwen is foutgevoelig; een externe dienst (Clerk, Auth0) zet persoonsgegevens buiten de EU en buiten onze database.
+- **Beslissing:** `better-auth` 1.7.7 in apps/api, met de Drizzle-adapter (geverifieerd met drizzle-orm 0.45.3, drizzle-kit 0.31.11, Zod 4.6.5, Fastify 5 en Node 24). Organization-plugin: tenant = organisatie, rollen owner/member, `tenantId` = `session.activeOrganizationId`. ID's als uuid. E-mail + wachtwoord nu; passkeys (`@better-auth/passkey`) en 2FA (`twoFactor`) later als plugin. Sessies in een httpOnly-cookie, `SameSite=Strict`, op dezelfde origin onder `/api/auth` (#021). Rate limiting en logging via onze eigen Fastify-plugins; de ingebouwde rate limiter en telemetrie van Better Auth staan uit. Tabellen via `auth generate` naar packages/db en daarna via gewone Drizzle-migraties.
+- **Alternatieven:** Lucia (sinds 2025 alleen nog een leerbron); Auth.js (minder geschikt buiten Next.js, geen organisaties); Clerk/WorkOS (data buiten eigen database en EU).
+- **Gevolgen:** Auth-tabellen zijn geen tenant-tabellen (een gebruiker kan lid zijn van meerdere tenants) en vragen een eigen toegangsregel (#031). Mails (verificatie, wachtwoord vergeten, uitnodigingen) wachten op een mailprovider.
+
+## #031 Drie databaserollen: eigenaar, app en auth
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** #026 koos twee rollen. Better Auth (#030) moet over tenants heen lezen (inloggen, lidmaatschappen), dus RLS per tenant past niet op de auth-tabellen.
+- **Beslissing:** Migraties als eigenaar (`DATABASE_MIGRATION_URL`). Groepsrollen `app_runtime` en `auth_runtime` (NOLOGIN, migratie 0001); login-rollen met wachtwoord worden er lid van buiten migraties (`pnpm db:roles` voor dev en CI). Better Auth gebruikt `DATABASE_AUTH_URL` en mag alleen de auth-tabellen. De app (`DATABASE_URL`) heeft geen rechten op `user`, `session`, `account`, `verification` en `invitation`, en leest `organization` en `member` alleen voor de eigen tenant via RLS. Elke tenant-tabel: `tenantIsolation()`-policy, `FORCE ROW LEVEL SECURITY` en expliciete grants in de migratie, geen default privileges.
+- **Alternatieven:** Twee rollen met volledige app-rechten op de auth-tabellen (alleen met conventie af te dwingen).
+- **Gevolgen:** Drie database-URL's. Tests draaien als app- en auth-rol en falen als een runtime-rol superuser, BYPASSRLS of (via lidmaatschap) eigenaar is, of als een tabel met `tenant_id` geen geforceerde RLS heeft. In productie moeten de login-rollen bij de hosting worden aangemaakt.

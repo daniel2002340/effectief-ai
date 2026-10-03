@@ -8,6 +8,27 @@
       "when": 1791025807219,
       "tag": "0000_enable_pgvector",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791040740924,
+      "tag": "0001_runtime_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791040747339,
+      "tag": "0002_auth_and_tenant_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791040756592,
+      "tag": "0003_force_rls_and_grants",
+      "breakpoints": true
     }
   ]
 }

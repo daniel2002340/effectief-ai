@@ -15,6 +15,7 @@
         "NODE_ENV",
         "LOG_LEVEL",
         "DATABASE_URL",
+        "DATABASE_AUTH_URL",
         "REDIS_URL",
         "API_HOST",
         "API_PORT",

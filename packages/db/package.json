@@ -11,7 +11,8 @@
     "test": "vitest run --passWithNoTests",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:check": "drizzle-kit check"
+    "db:check": "drizzle-kit check",
+    "db:roles": "node scripts/create-login-roles.ts"
   },
   "devDependencies": {
     "@effectief/config": "workspace:*",
