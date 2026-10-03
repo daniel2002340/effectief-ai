@@ -1,23 +1,10 @@
-import { type ContractMeta, contract } from '@effectief/shared';
-import { implement, ORPCError } from '@orpc/server';
-import type { FastifyBaseLogger } from 'fastify';
+import { contract } from '@effectief/shared';
+import { createBuilders } from './builders.ts';
 
-export interface ApiContext {
-  requestId: string;
-  log: FastifyBaseLogger;
-}
+const { publicProcedure, router: buildRouter } = createBuilders(contract);
 
-const os = implement(contract)
-  .$context<ApiContext>()
-  .use(async ({ procedure, next }) => {
-    const { auth } = procedure['~orpc'].meta as ContractMeta;
-    if (auth === 'public') return next();
-    // No session system yet: anything that is not public is denied.
-    throw new ORPCError('UNAUTHORIZED');
-  });
-
-export const router = os.router({
+export const router = buildRouter({
   system: {
-    status: os.system.status.handler(() => ({ status: 'ok' as const })),
+    status: publicProcedure.system.status.handler(() => ({ status: 'ok' as const })),
   },
 });

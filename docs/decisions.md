@@ -186,7 +186,7 @@ Format:
 
 ## #022 Route-auth: type `contract` voor oRPC en sessies voorlopig dicht
 - **Datum:** 2026-10-03
-- **Status:** geaccepteerd
+- **Status:** vervangen door #029
 - **Context:** Alle oRPC-procedures lopen via één Fastify-route; auth moet per procedure gelden.
 - **Beslissing:** Die ene route heeft `auth: 'contract'`; elke procedure declareert `meta.auth` (`session` of `public`), gecontroleerd bij opstarten en afgedwongen in middleware. `session` weigert alles (401) totdat er een sessiesysteem is.
 - **Gevolgen:** Het sessiesysteem vult de bestaande `session`-checks in; er komt geen nieuwe uitzonderingsroute.
@@ -237,3 +237,11 @@ Format:
 - **Beslissing:** tsup bundelt eigen code en workspace-packages (`noExternal: /^@effectief\//`); alle andere imports blijven extern. `scripts/deploy-app.sh` zet bundel en productie-`node_modules` samen met `pnpm deploy --prod` (vanuit de gedeelde lockfile, offline, `node-linker=hoisted`, `inject-workspace-packages` alleen voor die opdracht). Dockerfiles en CI gebruiken hetzelfde script. De CI-smoketest start de gebouwde api en laat de gebouwde worker één job verwerken.
 - **Alternatieven:** `pnpm deploy --legacy` (leest de lockfile niet, dus geen vaste versies); `inject-workspace-packages` voor de hele workspace (Node draait dan geen TS-bron meer in dev).
 - **Gevolgen:** De artifacts draaien niet direct vanuit `apps/*/dist` in de workspace, alleen na `deploy-app.sh`. Images zijn groter (api ±200 MB).
+
+## #029 oRPC-procedures vereisen standaard een sessie
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** #022 liet elke procedure `meta.auth` declareren in het contract, met een check bij opstarten. CLAUDE.md legt nu vast dat de sessie de standaard is.
+- **Beslissing:** `createBuilders()` in apps/api levert `procedure` (sessie-middleware, standaard) en `publicProcedure` (expliciet benoemde uitzondering). Het contract in packages/shared beschrijft alleen vormen, geen auth. De Fastify-route die oRPC serveert houdt `auth: 'contract'`.
+- **Alternatieven:** `meta.auth` per procedure (#022): een vergeten declaratie werd pas bij opstarten gevangen, en auth stond in het gedeelde contract.
+- **Gevolgen:** Een nieuwe procedure is zonder extra werk afgeschermd. Het sessiesysteem vult de middleware in `apps/api/src/orpc/builders.ts` in.

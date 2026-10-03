@@ -11,8 +11,8 @@ import { AppError } from '../errors.ts';
 
 /**
  * `contract` marks the single Fastify route that serves the oRPC contract.
- * Those procedures declare their own auth in the contract meta, which is
- * checked at startup by assertContractAuth().
+ * Procedures there require a session by default; public ones are implemented
+ * with the explicit `publicProcedure` (see orpc/builders.ts).
  */
 type RouteAuth = AuthType | 'contract';
 

@@ -16,7 +16,7 @@ Gebruikers zijn niet technisch. Houd de UI rustig, in het Nederlands, zonder jar
 - **Taal:** TypeScript (strict) overal, Node 24 LTS, alleen ESM
 - **Monorepo:** pnpm workspaces + Turborepo; één versie van React en TypeScript in de hele workspace
 - **API:** Fastify, Zod-validatie, pino-logging; gebundeld met tsup en gedraaid met `node` (nooit `tsx` in productie)
-- **API-contract:** ts-rest met Zod, gedeeld tussen api en web
+- **API-contract:** oRPC (contract-first) met Zod, gedeeld tussen api en web; webhooks blijven gewone Fastify-routes
 - **Workers:** BullMQ op Valkey/Redis (apart proces, dezelfde code)
 - **Database:** PostgreSQL 17 + pgvector, Drizzle ORM, Row Level Security
 - **Integraties:** Nango Cloud (OAuth, tokens, syncs, webhooks)
@@ -31,7 +31,7 @@ apps/api               HTTP-API en webhooks
 apps/worker            Achtergrondjobs (BullMQ)
 apps/web               Dashboard
 packages/db            Drizzle-schema, migraties, withTenant()
-packages/shared        ts-rest-contract, Zod-schema's, pricing-config
+packages/shared        oRPC-contract, Zod-schema's, pricing-config
 packages/integrations  Adapter per provider + nango-integrations/
 packages/ai            Prompts, classifiers, models.ts (enige plek voor model-ID's)
 packages/config        Gedeelde tsconfig en Biome-config
@@ -65,7 +65,8 @@ Deze regels gelden altijd. Wijk er alleen van af als de gebruiker dat expliciet 
 - Elke nieuwe tabel en elke nieuwe route krijgt een test die bewijst dat tenant A de data van tenant B niet kan lezen of wijzigen.
 
 **Authenticatie**
-- Deny by default. Elke route declareert zijn auth-type (`session`, `hmac`, `public`, …); de server weigert te starten als een route er geen heeft.
+- Deny by default. Elke Fastify-route declareert zijn auth-type (`session`, `hmac`, `public`, …); de server weigert te starten als een route er geen heeft.
+- oRPC-procedures vereisen standaard een sessie (middleware op de basis-router). Een publieke procedure gebruikt een aparte, expliciet benoemde `publicProcedure`.
 - Geen uitzonderingslijsten op pad of extensie.
 - Een nieuwe connectie wordt altijd server-side aan de tenant uit de sessie gekoppeld (Nango connect-session). Eigen OAuth-flows gebruiken de gedeelde nonce-helper: eenmalig, atomair verbruikt (`GETDEL`), gebonden aan de sessie die de flow startte.
 
@@ -127,7 +128,7 @@ Deze regels gelden altijd. Wijk er alleen van af als de gebruiker dat expliciet 
 ## Werkwijze
 
 1. Lees bij een nieuwe taak eerst de relevante entries in `docs/decisions.md`.
-2. Maak bij niet-triviale taken eerst een kort plan en wacht op akkoord. Houd plannen in de sessie, niet als planningsbestanden in de repo.
+2. Maak bij niet-triviale taken eerst een kort plan en wacht op akkoord. Houd plannen in de sessie, niet als planningsbestanden in de repo. Alleen open vervolgpunten gaan naar `docs/todo.md` (zie hieronder).
 3. Schrijf tests voor regels en randgevallen, zeker rond tenant-isolatie, auth, webhooks en acties. Verifieer met tests, niet door documenten te vergelijken.
 4. Kleine commits en PR's. Nooit een commit die honderden bestanden raakt zonder dat de gebruiker erom vroeg.
 5. **Agents en subagents:** commit eerst, voordat een agent start. Laat nooit twee agents tegelijk aan gedeelde bestanden werken (schema, `packages/shared`, routelijst, router van web). Draai typecheck na elke merge.
@@ -153,3 +154,20 @@ Niet vastleggen: bugfixes, naamgeving, kleine implementatiedetails, voortgang of
 - Neem de wijziging mee in de commit van het werk waar ze bij hoort; geen losse commits alleen voor `decisions.md`.
 - Noem aan het eind van de sessie welke entries je hebt toegevoegd of gewijzigd.
 - Raakt een beslissing de stack, regels of conventies in dit bestand, stel dan ook een wijziging van `CLAUDE.md` voor.
+
+## Todo's bijhouden
+
+`docs/todo.md` bevat alleen **open** punten die na deze sessie blijven liggen. Houd het zelf bij.
+
+**Toevoegen** wanneer in een sessie iets openblijft dat niet direct wordt opgelost: een bewust uitgestelde stap, een handmatige actie voor de gebruiker (account, app-installatie, verificatie), een gevonden probleem buiten de scope van de taak, of een `TODO` die je in code zou willen zetten.
+
+**Niet toevoegen:** stappen van de huidige taak, voortgang, ideeën zonder concrete actie.
+
+**Hoe:**
+- Eén regel per punt, in de juiste sectie (`Voor Daniël`, `Code`, `Later`), met waar relevant een verwijzing (`#018`, bestand of PR).
+- Voeg geen `TODO`-commentaar in code toe zonder bijbehorende regel in `docs/todo.md`.
+- Afgerond? **Verwijder** de regel. Geen afgevinkte lijst bijhouden; git bewaart de geschiedenis.
+- Lees bij de start van een taak de relevante punten; raakt de taak er een, pak het mee of noem het.
+- Neem wijzigingen mee in de commit van het werk; geen losse commits alleen voor `todo.md`.
+- Groeit `Code` boven ±25 punten, meld dat dan: dan is er te veel tegelijk open.
+- Noem aan het eind van de sessie welke punten je hebt toegevoegd of verwijderd.

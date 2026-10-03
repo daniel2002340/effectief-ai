@@ -1,13 +1,8 @@
 import { oc } from '@orpc/contract';
 import { z } from 'zod';
-import type { ContractAuthType } from './auth.ts';
 
-export interface ContractMeta {
-  /** Required on every procedure; checked when the API starts. */
-  auth?: ContractAuthType;
-}
-
-const base = oc.$meta<ContractMeta>({});
+// The contract describes shapes only. Who may call a procedure is decided in
+// the API: procedures require a session unless implemented as publicProcedure.
 
 export const systemStatusOutputSchema = z.object({
   status: z.literal('ok'),
@@ -15,10 +10,7 @@ export const systemStatusOutputSchema = z.object({
 
 export const contract = {
   system: {
-    status: base
-      .meta({ auth: 'public' })
-      .route({ method: 'GET', path: '/system/status' })
-      .output(systemStatusOutputSchema),
+    status: oc.route({ method: 'GET', path: '/system/status' }).output(systemStatusOutputSchema),
   },
 };
 

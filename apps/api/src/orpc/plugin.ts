@@ -1,12 +1,12 @@
-import { contract, type ErrorResponse } from '@effectief/shared';
+import type { ErrorResponse } from '@effectief/shared';
 import { ValidationError } from '@orpc/contract';
 import { OpenAPIHandler } from '@orpc/openapi/fastify';
 import { type ORPCError, onError } from '@orpc/server';
 import type { FastifyInstance } from 'fastify';
 import { AppError, codeForStatus, errorBody } from '../errors.ts';
 import { toErrorIssues } from '../issues.ts';
-import { assertContractAuth } from './contract-auth.ts';
-import { type ApiContext, router } from './router.ts';
+import type { ApiContext } from './builders.ts';
+import { router } from './router.ts';
 
 const API_PREFIX = '/api';
 
@@ -23,8 +23,6 @@ function isErrorResponse(body: unknown): body is ErrorResponse {
 }
 
 export async function orpcRoutes(app: FastifyInstance): Promise<void> {
-  assertContractAuth(contract);
-
   const handler = new OpenAPIHandler<ApiContext>(router, {
     customErrorResponseBodyEncoder: encodeError,
     rootInterceptors: [
