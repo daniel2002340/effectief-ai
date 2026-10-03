@@ -1,30 +1,40 @@
-import { useQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
+import { authClient } from '@/lib/auth-client';
 import { orpc } from '@/lib/orpc';
+import { requireTenant } from '@/lib/session';
 
 export const Route = createFileRoute('/')({
+  beforeLoad: ({ context }) => requireTenant(context.queryClient),
   component: HomePage,
 });
 
 function HomePage() {
-  const status = useQuery(orpc.system.status.queryOptions());
+  const { data: tenant } = useSuspenseQuery(orpc.tenant.current.queryOptions());
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  const signOut = async () => {
+    await authClient.signOut();
+    queryClient.clear();
+    await navigate({ to: '/inloggen' });
+  };
 
   return (
     <>
-      <PageHeader title="Vandaag" description="Hier verschijnen straks je kaarten." />
-      <section className="rounded-lg border p-4 text-sm" aria-live="polite">
-        {status.isPending ? <p>Verbinding maken…</p> : null}
-        {status.isSuccess ? <p>Verbonden met EffectiefAI.</p> : null}
-        {status.isError ? (
-          <div className="flex items-center justify-between gap-4">
-            <p>De server is even niet bereikbaar.</p>
-            <Button variant="outline" size="sm" onClick={() => status.refetch()}>
-              Opnieuw proberen
-            </Button>
-          </div>
-        ) : null}
+      <PageHeader
+        title="Vandaag"
+        description={tenant.name}
+        actions={
+          <Button variant="outline" size="sm" onClick={signOut}>
+            Uitloggen
+          </Button>
+        }
+      />
+      <section className="rounded-lg border p-4 text-sm">
+        <p>Hier verschijnen straks je kaarten.</p>
       </section>
     </>
   );

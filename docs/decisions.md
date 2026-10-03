@@ -264,7 +264,7 @@ Format:
 
 ## #032 CSRF: wijzigingen alleen als JSON
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** #021 maakt `SameSite=Strict`-cookies mogelijk. Een tweede laag is nodig voor browsers of situaties waarin dat niet volstaat, ook voor oRPC, dat zelf geen origin-check heeft.
 - **Beslissing:** De plugin `jsonOnly` weigert elk verzoek behalve GET/HEAD/OPTIONS zonder `Content-Type: application/json` met 415, voor alle routes behalve `auth: 'hmac'` (webhooks). Browsers kunnen cross-site geen JSON sturen zonder CORS-preflight, en die staan we niet toe. De origin-check van Better Auth staat expliciet aan, ook in tests (Better Auth zet hem anders uit bij `NODE_ENV=test`).
 - **Alternatieven:** CSRF-tokens (extra state en client-code); alleen vertrouwen op SameSite.

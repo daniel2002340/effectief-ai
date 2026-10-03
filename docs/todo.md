@@ -9,7 +9,7 @@ Handmatige acties buiten de code: accounts, app-installaties, verificaties, besl
 - [ ] Renovate als GitHub-app op de repo installeren (#025)
 - [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013)
 - [ ] Branch protection op `main`: CI-checks verplicht voor merge (#025)
-- [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028)
+- [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032)
 - [ ] Hosting kiezen met routering op pad (`/api`, `/webhooks` → api) en `API_TRUST_PROXY` daarop afstemmen (#021, #027)
 - [ ] Bij de hosting: login-rollen voor `app_runtime` en `auth_runtime` aanmaken met eigen wachtwoorden; de eigenaar alleen voor migraties (#031)
 - [ ] Nango-account aanmaken, en hostingregio en DPA controleren (#005)
@@ -25,7 +25,7 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 
 - [ ] Valkey onbereikbaar geeft 500; 503 `SERVICE_UNAVAILABLE` is juister (#027, `apps/api/src/plugins/rate-limit.ts`)
 - [ ] Lognoise beperken: bij Valkey-uitval logt elke herverbinding een fout (`apps/api/src/main.ts`)
-- [ ] Web-bundle (553 kB) verkleinen, vooral Zod en de oRPC-client (`apps/web`)
+- [ ] Web-bundle (543 kB + 73 kB Better Auth-client) verkleinen, vooral Zod en de oRPC-client (`apps/web`)
 - [ ] Docker-images bouwen in CI (#025)
 - [ ] Twee varianten van drizzle-orm in de lockfile (met en zonder kysely-peer, via Better Auth); dedupliceren zodat de adapter dezelfde kopie gebruikt (#030)
 - [ ] Foutantwoorden van `/api/auth/*` hebben de vorm van Better Auth, niet onze `ErrorResponse` (#030, `apps/api/src/auth/routes.ts`)

@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InloggenRouteImport } from './routes/inloggen'
+import { Route as RegistrerenRouteImport } from './routes/registreren'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const InloggenRoute = InloggenRouteImport.update({
+  id: '/inloggen',
+  path: '/inloggen',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegistrerenRoute = RegistrerenRouteImport.update({
+  id: '/registreren',
+  path: '/registreren',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/inloggen': typeof InloggenRoute
+  '/registreren': typeof RegistrerenRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/inloggen': typeof InloggenRoute
+  '/registreren': typeof RegistrerenRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/inloggen': typeof InloggenRoute
+  '/registreren': typeof RegistrerenRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/inloggen' | '/registreren'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/inloggen' | '/registreren'
+  id: '__root__' | '/' | '/inloggen' | '/registreren'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  InloggenRoute: typeof InloggenRoute
+  RegistrerenRoute: typeof RegistrerenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/inloggen': {
+      id: '/inloggen'
+      path: '/inloggen'
+      fullPath: '/inloggen'
+      preLoaderRoute: typeof InloggenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/registreren': {
+      id: '/registreren'
+      path: '/registreren'
+      fullPath: '/registreren'
+      preLoaderRoute: typeof RegistrerenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  InloggenRoute: InloggenRoute,
+  RegistrerenRoute: RegistrerenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
