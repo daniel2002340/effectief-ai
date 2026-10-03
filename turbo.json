@@ -16,6 +16,7 @@
         "LOG_LEVEL",
         "DATABASE_URL",
         "DATABASE_AUTH_URL",
+        "DATABASE_MIGRATION_URL",
         "REDIS_URL",
         "API_HOST",
         "API_PORT",
