@@ -64,6 +64,20 @@
       "when": 1791053429593,
       "tag": "0008_feed_rls_grants_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791056891551,
+      "tag": "0009_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791056909679,
+      "tag": "0010_knowledge_rls_grants_triggers",
+      "breakpoints": true
     }
   ]
 }

@@ -380,3 +380,26 @@ Format:
 - **Beslissing:** Check `status in ('concept','rejected') or approved_at is not null`; dat het een gebruiker was dwingt `transitionAction()` af en staat in `audit_log`. `proposed_input` krijgt UPDATE-recht, maar `actions_guard` staat alleen legen samen met `input_purged_at` toe. `provider_object_id` is onveranderlijk zodra hij gezet is. Een nieuwe actie is altijd een onbevestigd concept met `input = proposed_input`. `idempotency_key = <card_id>:<type>:<ordinal>`, het volgnummer komt van de aanroeper. `proposeAction()` eist een actieve connectie van een passende provider.
 - **Alternatieven:** `on delete restrict` op `approved_by_user_id` (een lid kan dan nooit weg); volgnummer tellen in de database (een herhaalde job maakt dan een tweede actie).
 - **Gevolgen:** docs/data-model.md (`actions`, §5) aangepast.
+
+## #047 Embeddings: Cohere Embed 5 via de Cohere API, 1024 dimensies
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** Open vraag 8 in docs/data-model.md. Embed 5 (`embed-v5.0-pro`/`-fast`) staat niet op Bedrock, alleen bij de Cohere API, Azure Foundry, SageMaker en Model Vault. HNSW in pgvector kan `vector` tot 2000 dimensies; de default van Embed 5 is 2048.
+- **Beslissing:** Cohere Embed 5 via de Cohere API (`/v2/embed`), Matryoshka-uitvoer van 1024 dimensies, `vector` (float). Documenten met Pro (`search_document`), queries met Fast (`search_query`): ze delen één vectorruimte. Per rij: `model` (ruimte, `cohere-embed-v5`), `model_version` (providermodel) en `dimensions`. Wijkt voor embeddings af van #007 (Bedrock).
+- **Alternatieven:** Titan v2 of Cohere Embed v4 via Bedrock EU (blijft in AWS, ouder model); 2048 als `halfvec`; SageMaker of Azure in een EU-regio (eigen endpoint of extra cloud).
+- **Gevolgen:** Cohere komt op de subverwerkerslijst; EU-verwerking en DPA nog na te gaan. Een nieuw model of nieuwe dimensie is een migratie (check + HNSW-index) plus herembedden (§3.5).
+
+## #048 Statusovergangen en vervangen van kennis in de database afgedwongen
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Feiten en playbooks mogen nooit worden overschreven, en alleen een gebruiker bevestigt (data-model §2).
+- **Beslissing:** Zelfde aanpak als #044: `factTransitions` (`proposed → confirmed | rejected`) en `playbookTransitions` (plus `confirmed → retired`) in packages/shared, met dezelfde paren in een trigger en `proposed` als beginstatus. Vervangen van een feit (`replaceFact`, of `confirmFact` bij hetzelfde `attribute`) sluit het oude af met `valid_to` en `superseded_by_id`; trigger `facts_end_once` maakt die eenmalig. Checks op `confirmed_at`, niet op `confirmed_by_user_id`.
+- **Alternatieven:** Alleen kolomrechten (een UPDATE van `status` of `valid_to` kan dan alles); een check op `confirmed_by_user_id` (blokkeert het verwijderen van een lid).
+- **Gevolgen:** Nieuwe auditacties `fact.*` en `playbook.*`. Herstellen van een onterecht afgesloten feit is een nieuw feit.
+
+## #049 Fase-3-tabellen nu, zonder logica
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** Open vraag 1 stelde fase 1 en 2 voor; de opdracht voor PR 4 vroeg ook `documents`, `document_chunks` en `insights`.
+- **Beslissing:** Ook de kennistabellen van fase 3 (`documents`, `document_chunks`, `chunk_embeddings`, `document_entities`, `insights`) bestaan nu, met schema, RLS, grants, tests en repository-functies. Extractie, chunking, embedden, object storage en RAG volgen in latere sessies.
+- **Gevolgen:** `source_chunk_id` en `actions.playbook_id` bestaan nu (#042 afgerond). `documents.storage_key` blijft leeg tot er object storage is.

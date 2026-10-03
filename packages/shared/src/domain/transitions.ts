@@ -1,4 +1,11 @@
-import type { ActionStatus, AuditAction, CardStatus, ConnectionStatus } from './status.ts';
+import type {
+  ActionStatus,
+  AuditAction,
+  CardStatus,
+  ConnectionStatus,
+  KnowledgeStatus,
+  PlaybookStatus,
+} from './status.ts';
 
 // Allowed status transitions (decision #044). Each table has one transition
 // function in packages/db that checks these lists, and a database trigger that
@@ -35,6 +42,24 @@ export const actionTransitions: Transitions<ActionStatus> = {
   failed: ['approved'],
   executed: ['concept'],
   rejected: [],
+};
+
+/**
+ * Only a user confirms or rejects (docs/data-model.md §2). A confirmed fact is
+ * not rejected later: it ends with valid_to, replaced by a new fact.
+ */
+export const factTransitions: Transitions<KnowledgeStatus> = {
+  proposed: ['confirmed', 'rejected'],
+  confirmed: [],
+  rejected: [],
+};
+
+/** A confirmed playbook is retired when a new version is confirmed, or withdrawn. */
+export const playbookTransitions: Transitions<PlaybookStatus> = {
+  proposed: ['confirmed', 'rejected'],
+  confirmed: ['retired'],
+  rejected: [],
+  retired: [],
 };
 
 export function isAllowedTransition<S extends string>(

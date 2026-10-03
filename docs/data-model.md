@@ -1,7 +1,7 @@
 # Datamodel
 
 Dit document beschrijft het schema van EffectiefAI 2.0. Elke schemawijziging werkt dit document bij in dezelfde PR (zie CLAUDE.md).
-Beslissingen staan in `docs/decisions.md` (#033–#046). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
+Beslissingen staan in `docs/decisions.md` (#033–#049). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
 
 Inhoud:
 
@@ -157,16 +157,21 @@ Model-output wordt eerst met het AI-schema in `packages/ai` geparst en daarna me
 
 ### 3.5 Embeddings: satelliettabellen per soort
 
-Gekozen: **een embeddingtabel per soort eigenaar** (`fact_embeddings`, `playbook_embeddings`, `chunk_embeddings`), met per rij het model en de dimensie.
+Gekozen: **een embeddingtabel per soort eigenaar** (`fact_embeddings`, `playbook_embeddings`, `chunk_embeddings`), met per rij het model, de modelversie en de dimensie.
 
 ```
 <x>_embeddings (
-  tenant_id, <x>_id, model text, dimensions smallint, embedding vector, created_at,
+  tenant_id, <x>_id, model text, model_version text, dimensions smallint, embedding vector, created_at,
   primary key (<x>_id, model),
   foreign key (tenant_id, <x>_id) references <x> (tenant_id, id) on delete cascade,
-  check (vector_dims(embedding) = dimensions)
+  check (vector_dims(embedding) = dimensions),
+  check ((model, model_version, dimensions) in (<combinaties uit models.ts>))
 )
 ```
+
+- `model` is de **vectorruimte** (sleutel in `embeddingModels`, bijv. `cohere-embed-v5`). Alleen vectoren met hetzelfde `model` en dezelfde `dimensions` worden met elkaar vergeleken.
+- `model_version` is het **providermodel dat de vector maakte** (`embed-v5.0-pro`). Embed 5 Pro en Fast delen één ruimte: documenten met Pro, queries met Fast (#047).
+- Een vector met een andere lengte dan het model voorschrijft wordt drie keer geweigerd: Zod in `storeEmbedding()`/`searchEmbeddings()`, `vector_dims(embedding) = dimensions`, en de check op `(model, model_version, dimensions)`. Die check wordt in het Drizzle-schema gegenereerd uit `packages/ai/models.ts`; een nieuw model is dus ook een migratie.
 
 Afgewogen:
 
@@ -178,10 +183,12 @@ Afgewogen:
 | Zoeken | Per soort | Altijd filteren op soort | Per soort (zo zoeken we toch) |
 
 - **HNSW** vereist een vaste dimensie. Daarom per actief model een partiële expressie-index in een migratie:
-  `create index … on chunk_embeddings using hnsw ((embedding::vector(1024)) vector_cosine_ops) where model = 'titan-embed-v2-1024';`
-  De zoekquery gebruikt exact dezelfde expressie en `where model = …`.
+  `create index … on chunk_embeddings using hnsw ((embedding::vector(1024)) vector_cosine_ops) where model = 'cohere-embed-v5' and dimensions = 1024;`
+  De zoekquery gebruikt exact dezelfde expressie en predicaat, met het model en de dimensie als letterlijke waarden (geen parameters), zodat de planner de partiële index kan gebruiken. `vector` met HNSW kan tot 2000 dimensies; daarboven is `halfvec` nodig.
 - **RLS en ANN:** RLS filtert ná de indexscan, dus bij een kleine tenant tussen veel andere kan HNSW te weinig resultaten geven. Daarom: zoekhelper zet `set local hnsw.iterative_scan = relaxed_order` (pgvector ≥ 0.8) en filtert expliciet op `tenant_id` (naast RLS), en er is een b-tree op `(tenant_id, model)` zodat de planner bij kleine tenants exact kan zoeken. Dit meten we met de evalset; partitioneren per tenant pas als het nodig is.
-- **Model en dimensie** komen uit `packages/ai/models.ts` (`embeddingModels`), met per soort het actieve model. `embedDocument` schrijft, `embedQuery` zoekt; het opgeslagen model moet gelijk zijn aan het querymodel.
+  - Gemeten in `knowledge/isolation.test.ts`: met `ef_search = 10` en 300 rijen van een andere tenant vlak bij de query geeft een gewone HNSW-scan voor de kleine tenant **niets** terug; met de iterative scan wel de eigen rij. Een tenant krijgt in geen van beide gevallen rijen van een ander.
+- **Model en dimensie** komen uit `packages/ai/models.ts` (`embeddingModels`, met `documentVersion` en `queryVersion`), met per soort het actieve model (`activeEmbeddingModels`). `embedDocument` schrijft, `embedQuery` zoekt; de ruimte (`model`, `dimensions`) van de query moet gelijk zijn aan die van de opgeslagen rijen.
+- **Gekozen model (#047):** Cohere Embed 5 via de Cohere API, 1024 dimensies (Matryoshka), `vector` (float). Pro voor documenten, Fast voor queries.
 - **Opnieuw embedden:** (1) nieuw model in `models.ts` + migratie met de HNSW-index; (2) backfill-job per tenant schrijft rijen voor elke eigenaar zonder rij voor het nieuwe model (idempotent door de PK); (3) evalset draaien en drempels herijken; (4) actief model omzetten; (5) job verwijdert rijen van het oude model, migratie verwijdert de oude index.
 - **Persoonsgegevens:** embeddings zijn afgeleid van inhoud en gelden als persoonsgegevens (V). Ze verdwijnen via cascade met hun eigenaar.
 
@@ -254,30 +261,44 @@ Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat
 | `cards`, `card_events`, `card_entities` | gebouwd | 0007, 0008 |
 | `actions`, `audit_log` | gebouwd | 0007, 0008 |
 | `events.connection_id`, `events.caused_by_action_id`, `tasks.origin_card_id`, `source_action_id` | gebouwd | 0007 |
-| overige tabellen | ontwerp | |
+| `facts`, `fact_embeddings` | gebouwd | 0009, 0010 |
+| `playbooks`, `playbook_examples`, `playbook_embeddings`, view `playbook_usage` | gebouwd | 0009, 0010 |
+| `documents`, `document_chunks`, `chunk_embeddings`, `document_entities` | gebouwd | 0009, 0010 |
+| `company_profile`, `insights` | gebouwd | 0009, 0010 |
+| `source_chunk_id`, `actions.playbook_id` | gebouwd | 0009 |
+| `webhook_deliveries` | ontwerp | |
 
-Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, en repository-functies in `packages/db/src/memory/` en `packages/db/src/feed/` (nog geen API-procedures).
+Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, en repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/` (nog geen API-procedures, geen extractie, leren of RAG).
 
 **Statusovergangen (#044).** `connections`, `cards` en `actions` veranderen van status alleen via `transitionConnection()`, `transitionCard()` en `transitionAction()`. Die controleren de overgang tegen de lijsten in `packages/shared/src/domain/transitions.ts`, doen `UPDATE … WHERE id = … AND status = <verwacht>` en schrijven in dezelfde transactie één regel in `audit_log`. Matcht de update geen rij, dan volgt `TransitionError` met `status_changed` (iemand anders was eerst) of `not_found`. In de database:
 
 - `status_transition_guard()`: een trigger per tabel met dezelfde `from:to`-paren als argumenten; een test vergelijkt ze met de lijsten.
-- `initial_status_guard()`: nieuwe rijen beginnen als `active`, `open` of `concept`.
+- `initial_status_guard()`: nieuwe rijen beginnen als `active`, `open`, `concept` of (`facts`, `playbooks`) `proposed`.
 
 | Tabel | Overgangen |
 |---|---|
 | `connections` | `active → revoked \| expired`, `expired → active \| revoked \| purged`, `revoked → purged` |
 | `cards` | `open → snoozed \| done \| dismissed \| expired`, `snoozed → open \| done \| dismissed \| expired` |
 | `actions` | `concept → approved \| rejected`, `approved → executed \| failed`, `failed → approved`, `executed → concept` |
+| `facts` | `proposed → confirmed \| rejected` |
+| `playbooks` | `proposed → confirmed \| rejected`, `confirmed → retired` |
 
-`expired → active` is opnieuw autoriseren via Nango (zelfde `nango_connection_id`). `revoked` en `purged` zijn eindstatussen: opnieuw koppelen is een nieuwe connectie. Naar `approved` en `rejected` kan alleen een actor van het type `user`.
+`expired → active` is opnieuw autoriseren via Nango (zelfde `nango_connection_id`). `revoked` en `purged` zijn eindstatussen: opnieuw koppelen is een nieuwe connectie. Naar `approved` en `rejected` kan alleen een actor van het type `user`; hetzelfde geldt voor bevestigen, afwijzen en intrekken van feiten en playbooks.
+
+**Kennis (facts, playbooks).** Een bevestigd feit krijgt geen andere status meer: het eindigt met `valid_to`. De functies in `packages/db/src/knowledge/`:
+
+- `confirmFact()`: `proposed → confirmed`. Heeft de entiteit al een geldend, bevestigd feit met hetzelfde `attribute`, dan krijgt dat in dezelfde transactie `valid_to` en `superseded_by_id`.
+- `replaceFact()`: correctie door de gebruiker (§6.2 stap 5). Het oude feit (moet bevestigd en geldend zijn) krijgt `valid_to = now()`, er komt een nieuw, bevestigd feit met `valid_from` gelijk aan die `valid_to`, en het oude krijgt `superseded_by_id`. Nog een keer vervangen geeft `KnowledgeError('not_current')`.
+- `confirmPlaybook()`: bij een nieuwe versie wordt de vorige in dezelfde transactie `retired`; is die al niet meer `confirmed` (een andere versie won), dan faalt alles.
+- Audit: `fact.confirmed`, `fact.rejected`, `fact.superseded`, `playbook.confirmed`, `playbook.rejected`, `playbook.retired`, alleen met ID's, scope en versie.
 
 **Afwijkingen van het ontwerp in de bouw:**
 
 - **Kolommen naar tabellen die nog niet bestaan** komen pas met hun doeltabel, mét samengestelde FK (#042). Een kolom zonder FK zou in de tussentijd naar een rij van een andere tenant kunnen wijzen.
-  - Nog open: `source_chunk_id` (met `document_chunks`, fase 3) en `actions.playbook_id` (met `playbooks`).
-  - Het Zod-bronschema (`sourceRefSchema`) accepteert `event`, `user`, `action` en `system`; `document` volgt met `source_chunk_id`. De database-check kent alle vijf waarden al.
+  - Alle verwijzende kolommen uit het ontwerp staan er nu; `sourceRefSchema` accepteert alle vijf bronsoorten.
 - **Nog niet gebouwd bij `connections`:** de functies `resolve_connection()` en `list_tenant_ids()` (#038). Ze komen met de webhook- en retentie-PR, waar ze gebruikt worden.
-- **`tenant_id` heeft een default** uit de transactie (§3.1, #043).
+- **`tenant_id` heeft een default** uit de transactie (§3.1, #043), ook als primaire sleutel van `company_profile`.
+- **Fase 3 al aangemaakt:** `documents`, `document_chunks`, `chunk_embeddings`, `document_entities` en `insights` staan er al (open vraag 1), zonder verwerkingslogica.
 - **Extra checks:**
   - `events`: `(summary is null) = (summarized_at is null)`.
   - `relations`: `status <> 'confirmed' or confirmed_at is not null`.
@@ -287,8 +308,16 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
   - `cards`: `(status = 'snoozed') = (snoozed_until is not null)`; `(kind = 'connection_problem') = (connection_id is not null)`; `(kind = 'task_due') = (task_id is not null)`; `priority between 0 and 3`. `cards.connection_id` is `on delete cascade`.
   - `actions`: `(input_purged_at is null) = (proposed_input is not null and input is not null)`; `attempts >= 0`.
   - `audit_log`: `(actor_type = 'user') = (actor_user_id is not null)`.
+  - `facts`: `superseded_by_id is null or valid_to is not null`; `superseded_by_id <> id`; `structured->>'attribute' = attribute`. Trigger `facts_end_once`: `valid_to` en `superseded_by_id` zijn eenmalig (behalve `set null` via de FK).
+  - `playbooks`: `version >= 1`; `supersedes_id <> id`; `scope_user_id` is `on delete cascade` (een persoonlijk playbook verdwijnt met het lid).
+  - `playbook_examples`: `source_event_id is not null or source_action_id is not null`.
+  - `documents`: `(origin = 'connection') = (connection_id is not null and external_id is not null)`; `sha256` is 64 hex-tekens (kleine letters); `unique (tenant_id, sha256)`.
+  - `insights`: `(kind = 'payment_behaviour') = (entity_id is not null)` (afgeleid uit `insightPerEntity`); `expires_at > computed_at`.
 - **`entity_external_refs.provider`** neemt `addEntityExternalRef()` over van de connectie, zodat die twee niet kunnen verschillen.
-- **Geen check op `confirmed_by_user_id`** bij `relations`. Die kolom wordt `null` als het lid verdwijnt (`set null`), en een check zou het verwijderen van een lid dan blokkeren. Hetzelfde probleem zit in het ontwerp van `facts` en `playbooks` (zie docs/todo.md).
+- **Geen check op `confirmed_by_user_id`** bij `relations`, `facts` en `playbooks`, maar op `confirmed_at`. Die kolom wordt `null` als het lid verdwijnt (`set null`), en een check zou het verwijderen van een lid dan blokkeren.
+- **`insights` zonder bronkolommen**, ook al noemt §3.6 ze: inzichten worden deterministisch berekend, niet voorgesteld door de AI.
+- **Soorten inzichten:** `open_quotes` (bedrijfsbreed: aantal, ouder dan N dagen, totaal in centen) en `payment_behaviour` (per klant: aantal facturen, gemiddeld aantal dagen te laat).
+- **`playbook_usage`** telt alleen uitgevoerde acties (`times_applied`, `last_applied_at`) en is `security_invoker`, zodat RLS van `playbooks` en `actions` geldt.
 - **`events.payload` is PG-klasse `—`**: de Zod-schema's staan geen vrije tekst toe (alleen ID's, documentnummers, bedragen en enums).
 
 ---
@@ -607,7 +636,7 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 
 - **Tegenspraak:** een nieuw feit met dezelfde `(entity_id, attribute)` als een geldend feit wordt `proposed` met verwijzing naar het oude. Pas bij bevestiging krijgt het oude `valid_to = now()` en `superseded_by_id`, in één transactie. Een feit zonder `attribute` (vrij) wordt via embedding-gelijkenis als mogelijke tegenspraak aangeboden in de review.
 - **Nooit overschrijven:** `statement`, `structured`, `attribute`, `entity_id`, `valid_from` en bron hebben geen UPDATE-recht (§5). Corrigeren = nieuw feit dat het oude vervangt.
-- **Constraints:** `check (confidence between 0 and 1)`; `check (status <> 'confirmed' or confirmed_by_user_id is not null)`; partieel `unique (tenant_id, entity_id, attribute) where status = 'confirmed' and valid_to is null and attribute is not null`.
+- **Constraints:** `check (confidence between 0 and 1)`; `check (status <> 'confirmed' or confirmed_at is not null)`; partieel `unique (tenant_id, entity_id, attribute) where status = 'confirmed' and valid_to is null and attribute is not null`.
 - **Indexen:** `(tenant_id, entity_id, status) where valid_to is null`; `(tenant_id, status, created_at)` voor de review-kaart.
 - **Embedding:** `fact_embeddings` van `statement`.
 - **Verwijderen:** niet door de app (`rejected` of `valid_to`). Hard via cascade bij forget. **Fase:** 2.
@@ -637,7 +666,7 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
   - `embedding` → `playbook_embeddings` (§3.5).
   - `source_ref` → bronkolommen (§3.6).
 - **Bewerken:** een bevestigd playbook wijzigen = nieuwe versie met `supersedes_id`; de oude wordt `retired`. Afgewezen voorstellen blijven staan zodat hetzelfde voorstel niet steeds terugkomt (dedupe via embedding).
-- **Constraints:** `check ((scope = 'user') = (scope_user_id is not null))`; `check ((scope = 'customer') = (scope_entity_id is not null))`; `check (status <> 'confirmed' or confirmed_by_user_id is not null)`.
+- **Constraints:** `check ((scope = 'user') = (scope_user_id is not null))`; `check ((scope = 'customer') = (scope_entity_id is not null))`; `check (status not in ('confirmed', 'retired') or confirmed_at is not null)`.
 - **Indexen:** `(tenant_id, status, scope)`; `(tenant_id, scope_entity_id)`.
 - **Verwijderen:** zacht (`retired`). Hard via cascade als de klant (scope `customer`) vergeten wordt. **Fase:** 2.
 
@@ -768,11 +797,12 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `actions` | S, I, U(`status`, `proposed_input`, `input`, `input_purged_at`, `provider_object_id`, `result`, `approved_by_user_id`, `approved_at`, `executed_at`, `attempts`, `last_error_code`) | `proposed_input` onveranderlijk behalve legen door retentie (trigger `actions_guard`); trigger op overgangen |
 | `tasks` | S, I, U(`title`, `notes`, `due_at`, `status`, `assignee_user_id`, `completed_at`, `completed_by_user_id`), D | |
 | `audit_log` | S, I | append-only; trigger weigert U/D |
-| `company_profile` | S, I, U(alle) | |
+| `company_profile` | S, I, U(alle) | verdwijnt met de tenant |
 | `documents` | S, I, U(`status`, `title`), D | |
 | `document_chunks` | S, I | via cascade |
 | `fact_embeddings`, `playbook_embeddings`, `chunk_embeddings` | S, I, D | D voor herembedden |
 | `insights` | S, I, U, D | herberekenbaar |
+| view `playbook_usage` | S | `security_invoker` |
 
 `auth_runtime` krijgt op geen van deze tabellen rechten. Twee `SECURITY DEFINER`-functies (eigenaar: migratierol, `search_path` vast, alleen `EXECUTE` voor `app_runtime`): `resolve_connection(provider, nango_connection_id)` en `list_tenant_ids()`. Ze geven alleen ID's terug.
 
@@ -848,13 +878,13 @@ Wie: alleen een `owner` van de tenant, met bevestiging in de UI. Uitvoering als 
 
 ## 7. Open vragen
 
-1. **Wat nu aanmaken:** alle tabellen van fase 1 en 2 in sessie 2, of alleen fase 1? Mijn voorstel: fase 1 en 2 nu (het model is samenhangend en de FK's tussen `actions`, `playbooks` en `facts` zijn er dan meteen), fase 3 later.
+1. ~~**Wat nu aanmaken**~~ Beantwoord: alle tabellen van fase 1, 2 en 3 staan er (sessie 2, zie §3.10).
 2. **Automatisch entiteiten aanmaken:** maken we een contact aan voor elke relevante afzender (stap 4 in §6.1), of pas als de gebruiker iets met de kaart doet? Het eerste geeft een rijker geheugen, het tweede minder persoonsgegevens.
 3. **Bewaartermijn bron-inhoud:** default 90 dagen, per tenant in te stellen tussen 30 en 365? En inputs van acties 180 dagen na de eindstatus, gesloten kaarten 12 maanden?
 4. **Bewaartermijn van de tijdlijn:** `events.summary` bevat persoonsgegevens en staat er nu zolang de tenant bestaat. Willen we een maximum (bijv. 7 jaar, gelijk aan de fiscale bewaarplicht, of korter)?
 5. **Forget in vrije tekst en documenten:** een feit over een andere klant of een document kan de vergeten persoon noemen. Voorstel: niet automatisch herschrijven, wel een kaart voor de owner. Akkoord, of willen we het model laten redigeren (met akkoord)?
 6. **`audit_log` na opzeggen:** verdwijnt nu met de tenant (cascade). Moeten we iets (zonder persoonsgegevens) langer bewaren voor geschillen of facturatie?
 7. **Niet opnieuw opnemen na forget:** als een vergeten persoon opnieuw mailt, ontstaat een nieuwe entiteit. Willen we een lijst met gehashte identifiers om dat te voorkomen? Dat is zelf ook een persoonsgegeven (met grondslag: het verzoek uitvoeren).
-8. **Embeddingmodel en dimensie:** welk model via Bedrock in de EU (Titan Text Embeddings v2 met 1024, of Cohere Embed (multilingual) als die in onze regio beschikbaar is)? En `vector` of `halfvec` (halve opslag, voor ons waarschijnlijk genoeg)?
+8. ~~**Embeddingmodel en dimensie**~~ Beantwoord (#047): Cohere Embed 5 via de Cohere API, 1024 dimensies, `vector`. Open blijft de EU-verwerking bij Cohere (docs/todo.md).
 9. **Mollie-webhooks:** Mollie stuurt alleen een betalings-ID. Voorstel: per connectie een eigen webhook-URL met de connectie-ID erin, die we via `resolve_connection()` naar een tenant vertalen en daarna bij Mollie verifiëren (de betaling ophalen). Akkoord? Dat raakt de regel "tenantId nooit uit URL-parameters": de URL bevat een connectie-ID, en de tenant komt uit de database.
 10. **Rollen:** forget, purge en retentie verwijderen nu met `app_runtime`. Willen we later een vierde rol (`maintenance_runtime`) die als enige DELETE heeft op `events` en `event_contents`, zodat een route dat nooit per ongeluk kan?

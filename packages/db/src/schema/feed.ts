@@ -32,6 +32,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { createdAt, id, inList, jsonbIs, memberRef, tenantId, updatedAt } from './columns.ts';
+import { playbooks } from './knowledge.ts';
 import { entities, events, tasks } from './memory.ts';
 import { appRuntime, currentTenantId } from './roles.ts';
 import { tenantIsolation } from './tenant.ts';
@@ -229,7 +230,7 @@ export const cardEntities = pgTable(
  * A proposed write action on a card: proposeAction → approve → execute (#004).
  * The trigger actions_guard (migration 0008) enforces the transitions and that
  * input only changes in concept, proposed_input never and provider_object_id
- * never once set. `playbook_id` follows with playbooks (#042).
+ * never once set.
  */
 export const actions = pgTable(
   'actions',
@@ -246,6 +247,8 @@ export const actions = pgTable(
     idempotencyKey: text('idempotency_key').notNull(),
     providerObjectId: text('provider_object_id'),
     result: jsonb('result').$type<ActionResult>(),
+    /** The playbook the proposal followed. */
+    playbookId: uuid('playbook_id'),
     approvedByUserId: uuid('approved_by_user_id'),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     executedAt: timestamp('executed_at', { withTimezone: true }),
@@ -269,6 +272,11 @@ export const actions = pgTable(
       columns: [t.tenantId, t.connectionId],
       foreignColumns: [connections.tenantId, connections.id],
     }),
+    foreignKey({
+      name: 'actions_playbook_fk',
+      columns: [t.tenantId, t.playbookId],
+      foreignColumns: [playbooks.tenantId, playbooks.id],
+    }).onDelete('set null'),
     memberRef('actions_approved_by_fk', t.tenantId, t.approvedByUserId),
     check('actions_type', inList(t.type, actionTypes)),
     check('actions_status', inList(t.status, actionStatuses)),
@@ -294,6 +302,7 @@ export const actions = pgTable(
     check('actions_attempts', sql`${t.attempts} >= 0`),
     index('actions_tenant_card_idx').on(t.tenantId, t.cardId),
     index('actions_tenant_status_idx').on(t.tenantId, t.status),
+    index('actions_tenant_playbook_idx').on(t.tenantId, t.playbookId),
     tenantIsolation(t.tenantId),
   ],
 ).enableRLS();

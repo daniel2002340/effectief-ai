@@ -59,6 +59,7 @@ export async function proposeAction(tx: TenantTransaction, input: ProposeActionI
       proposedInput: proposal.input,
       input: proposal.input,
       idempotencyKey,
+      playbookId: proposal.playbookId,
       aiModel: proposal.aiModel,
       aiTraceId: proposal.aiTraceId,
     })

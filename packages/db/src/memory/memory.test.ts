@@ -294,8 +294,8 @@ describe('jsonb with invalid content is rejected', () => {
         createTask(tx, {
           title: 'X',
           createdBy: 'ai',
-          // @ts-expect-error: documents are not a source yet (no document_chunks table)
-          source: { sourceType: 'document', sourceChunkId: entity.id },
+          // @ts-expect-error: a document source needs sourceChunkId
+          source: { sourceType: 'document', sourceEventId: entity.id },
         }),
       );
     });
