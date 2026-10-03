@@ -356,3 +356,27 @@ Format:
 - **Beslissing:** Op nieuwe tenant-tabellen heeft `tenant_id` als default `nullif(current_setting('app.tenant_id', true), '')::uuid`. Repository-functies krijgen alleen een `TenantTransaction` en geven geen `tenant_id` mee. Buiten `withTenant()` is de default `null` en faalt de insert; RLS (`with check`) blijft de echte grens.
 - **Alternatieven:** `tenantId` als parameter naast de transactie; een eigen transactietype dat de tenant draagt.
 - **Gevolgen:** Helper `tenantId()` in `packages/db/src/schema/columns.ts` voor elke nieuwe tenant-tabel. `tenant_settings` (PK `tenant_id`) houdt een expliciete waarde.
+
+## #044 Statusovergangen: één functie per tabel plus een trigger met dezelfde paren
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Statussen van `connections`, `cards` en `actions` sturen wat er naar buiten gaat; gelijktijdige wijzigingen (twee tabbladen, job en gebruiker) mogen elkaar niet overschrijven.
+- **Beslissing:** Overgangslijsten in `packages/shared/src/domain/transitions.ts`. Per tabel één functie (`transitionConnection/Card/Action`) die de lijst controleert, `UPDATE … WHERE status = <verwacht>` doet en in dezelfde transactie één audit-regel schrijft; geen rij → `TransitionError` (`status_changed` of `not_found`). In de database een generieke trigger met dezelfde `from:to`-paren als argumenten (een test vergelijkt ze), en een trigger die de beginstatus bij INSERT afdwingt. Toegevoegd: `expired → active` (opnieuw autoriseren via Nango) en `expired → revoked`; kaarten `open ↔ snoozed`, beide → `done | dismissed | expired`.
+- **Alternatieven:** Alleen in code (ruwe SQL kan dan elke overgang); alleen een trigger voor `actions`, zoals in het ontwerp (connections en cards zonder vangnet); `SELECT … FOR UPDATE` (twee queries, zelfde resultaat).
+- **Gevolgen:** Een nieuwe status of overgang is een wijziging in de lijst én een migratie die de trigger vervangt. De API vertaalt `TransitionError` naar `CONFLICT`/`NOT_FOUND`.
+
+## #045 audit_log append-only, ook voor de eigenaar
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** `audit_log` moet elke verwijdering overleven en niet te wijzigen zijn, maar mag het opzeggen van een tenant (cascade) niet blokkeren.
+- **Beslissing:** De app-rol heeft alleen SELECT en INSERT, met policies `for select` en `for insert`. De trigger `audit_log_append_only` weigert UPDATE, DELETE en TRUNCATE voor elke rol en laat alleen een DELETE toe met `pg_trigger_depth() > 1`, dus vanuit de FK-cascade. Schrijven via `writeAudit()` met Zod-metadata per actie, zonder vrije tekst.
+- **Alternatieven:** Alleen grants (de eigenaar kan dan wijzigen); geen cascade en audit van opgezegde tenants bewaren (open vraag 6 in data-model.md).
+- **Gevolgen:** Een eigen trigger die uit `audit_log` verwijdert zou ook door de uitzondering vallen; zulke triggers zijn er niet en horen er niet te komen.
+
+## #046 actions: akkoord op approved_at, onveranderlijk provider-object, alleen een concept invoegen
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Het ontwerp zette de akkoordcheck op `approved_by_user_id`, maar die kolom wordt `null` als het lid verdwijnt (`set null`); zo'n check blokkeert dan het verwijderen van het lid (zelfde probleem als `facts`, zie todo). Retentie moet `proposed_input` kunnen legen, maar die kolom had geen UPDATE-recht.
+- **Beslissing:** Check `status in ('concept','rejected') or approved_at is not null`; dat het een gebruiker was dwingt `transitionAction()` af en staat in `audit_log`. `proposed_input` krijgt UPDATE-recht, maar `actions_guard` staat alleen legen samen met `input_purged_at` toe. `provider_object_id` is onveranderlijk zodra hij gezet is. Een nieuwe actie is altijd een onbevestigd concept met `input = proposed_input`. `idempotency_key = <card_id>:<type>:<ordinal>`, het volgnummer komt van de aanroeper. `proposeAction()` eist een actieve connectie van een passende provider.
+- **Alternatieven:** `on delete restrict` op `approved_by_user_id` (een lid kan dan nooit weg); volgnummer tellen in de database (een herhaalde job maakt dan een tweede actie).
+- **Gevolgen:** docs/data-model.md (`actions`, §5) aangepast.

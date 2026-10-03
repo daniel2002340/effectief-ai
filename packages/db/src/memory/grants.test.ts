@@ -53,6 +53,53 @@ const expectedGrants: Record<string, Expected> = {
     ],
   },
   task_entities: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  connections: {
+    table: ['SELECT', 'INSERT'],
+    updateColumns: [
+      'status',
+      'status_reason',
+      'status_changed_at',
+      'last_synced_at',
+      'account_label',
+      'external_account_id',
+      'updated_at',
+    ],
+  },
+  entity_external_refs: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  cards: {
+    table: ['SELECT', 'INSERT', 'DELETE'],
+    updateColumns: [
+      'status',
+      'title',
+      'summary',
+      'payload',
+      'priority',
+      'snoozed_until',
+      'resolved_at',
+      'resolved_by_user_id',
+      'updated_at',
+    ],
+  },
+  card_events: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  card_entities: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  actions: {
+    table: ['SELECT', 'INSERT'],
+    updateColumns: [
+      'status',
+      'proposed_input',
+      'input',
+      'input_purged_at',
+      'provider_object_id',
+      'result',
+      'approved_by_user_id',
+      'approved_at',
+      'executed_at',
+      'attempts',
+      'last_error_code',
+      'updated_at',
+    ],
+  },
+  audit_log: { table: ['SELECT', 'INSERT'] },
 };
 
 const db = openTestDatabases();

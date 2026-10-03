@@ -1,7 +1,7 @@
 # Datamodel
 
 Dit document beschrijft het schema van EffectiefAI 2.0. Elke schemawijziging werkt dit document bij in dezelfde PR (zie CLAUDE.md).
-Beslissingen staan in `docs/decisions.md` (#033–#041). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
+Beslissingen staan in `docs/decisions.md` (#033–#046). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
 
 Inhoud:
 
@@ -250,24 +250,44 @@ Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat
 | `entities`, `entity_identifiers`, `relations` | gebouwd | 0005, 0006 |
 | `events`, `event_contents`, `event_entities` | gebouwd | 0005, 0006 |
 | `tasks`, `task_entities` | gebouwd | 0005, 0006 |
+| `connections`, `entity_external_refs` | gebouwd | 0007, 0008 |
+| `cards`, `card_events`, `card_entities` | gebouwd | 0007, 0008 |
+| `actions`, `audit_log` | gebouwd | 0007, 0008 |
+| `events.connection_id`, `events.caused_by_action_id`, `tasks.origin_card_id`, `source_action_id` | gebouwd | 0007 |
 | overige tabellen | ontwerp | |
 
-Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, en repository-functies in `packages/db/src/memory/` (aanmaken en lezen, nog geen API-procedures).
+Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, en repository-functies in `packages/db/src/memory/` en `packages/db/src/feed/` (nog geen API-procedures).
+
+**Statusovergangen (#044).** `connections`, `cards` en `actions` veranderen van status alleen via `transitionConnection()`, `transitionCard()` en `transitionAction()`. Die controleren de overgang tegen de lijsten in `packages/shared/src/domain/transitions.ts`, doen `UPDATE … WHERE id = … AND status = <verwacht>` en schrijven in dezelfde transactie één regel in `audit_log`. Matcht de update geen rij, dan volgt `TransitionError` met `status_changed` (iemand anders was eerst) of `not_found`. In de database:
+
+- `status_transition_guard()`: een trigger per tabel met dezelfde `from:to`-paren als argumenten; een test vergelijkt ze met de lijsten.
+- `initial_status_guard()`: nieuwe rijen beginnen als `active`, `open` of `concept`.
+
+| Tabel | Overgangen |
+|---|---|
+| `connections` | `active → revoked \| expired`, `expired → active \| revoked \| purged`, `revoked → purged` |
+| `cards` | `open → snoozed \| done \| dismissed \| expired`, `snoozed → open \| done \| dismissed \| expired` |
+| `actions` | `concept → approved \| rejected`, `approved → executed \| failed`, `failed → approved`, `executed → concept` |
+
+`expired → active` is opnieuw autoriseren via Nango (zelfde `nango_connection_id`). `revoked` en `purged` zijn eindstatussen: opnieuw koppelen is een nieuwe connectie. Naar `approved` en `rejected` kan alleen een actor van het type `user`.
 
 **Afwijkingen van het ontwerp in de bouw:**
 
 - **Kolommen naar tabellen die nog niet bestaan** komen pas met hun doeltabel, mét samengestelde FK (#042). Een kolom zonder FK zou in de tussentijd naar een rij van een andere tenant kunnen wijzen.
-  - `events.connection_id` en `entity_external_refs` (hele tabel): met `connections`.
-  - `events.caused_by_action_id` en `source_action_id`: met `actions`.
-  - `tasks.origin_card_id`: met `cards`.
-  - `source_chunk_id`: met `document_chunks` (fase 3).
-  - Het Zod-bronschema (`sourceRefSchema`) accepteert tot dan alleen `event`, `user` en `system`. De database-check kent alle vijf waarden al.
+  - Nog open: `source_chunk_id` (met `document_chunks`, fase 3) en `actions.playbook_id` (met `playbooks`).
+  - Het Zod-bronschema (`sourceRefSchema`) accepteert `event`, `user`, `action` en `system`; `document` volgt met `source_chunk_id`. De database-check kent alle vijf waarden al.
+- **Nog niet gebouwd bij `connections`:** de functies `resolve_connection()` en `list_tenant_ids()` (#038). Ze komen met de webhook- en retentie-PR, waar ze gebruikt worden.
 - **`tenant_id` heeft een default** uit de transactie (§3.1, #043).
 - **Extra checks:**
   - `events`: `(summary is null) = (summarized_at is null)`.
   - `relations`: `status <> 'confirmed' or confirmed_at is not null`.
   - `tasks`: `(status = 'done') = (completed_at is not null)`.
   - `entities`: `merged_into_id <> id`.
+  - `connections`: `status <> 'purged' or account_label is null`; `status_reason` is een gesloten lijst (`invalid_grant`, `provider_revoked`, `user_disconnected`, `reauthorized`, `data_purged`).
+  - `cards`: `(status = 'snoozed') = (snoozed_until is not null)`; `(kind = 'connection_problem') = (connection_id is not null)`; `(kind = 'task_due') = (task_id is not null)`; `priority between 0 and 3`. `cards.connection_id` is `on delete cascade`.
+  - `actions`: `(input_purged_at is null) = (proposed_input is not null and input is not null)`; `attempts >= 0`.
+  - `audit_log`: `(actor_type = 'user') = (actor_user_id is not null)`.
+- **`entity_external_refs.provider`** neemt `addEntityExternalRef()` over van de connectie, zodat die twee niet kunnen verschillen.
 - **Geen check op `confirmed_by_user_id`** bij `relations`. Die kolom wordt `null` als het lid verdwijnt (`set null`), en een check zou het verwijderen van een lid dan blokkeren. Hetzelfde probleem zit in het ontwerp van `facts` en `playbooks` (zie docs/todo.md).
 - **`events.payload` is PG-klasse `—`**: de Zod-schema's staan geen vrije tekst toe (alleen ID's, documentnummers, bedragen en enums).
 
@@ -459,8 +479,15 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 | `last_error_code` | text null | | — |
 | `ai_model`, `ai_trace_id` | text null | | — |
 
-- **Constraints:** `unique (tenant_id, idempotency_key)`; `check (status <> 'executed' or provider_object_id is not null)`; `check (status in ('concept','rejected') or approved_by_user_id is not null)` — uitgevoerd of goedgekeurd kan niet zonder akkoord van een gebruiker.
-- **Trigger** `actions_guard`: alleen overgangen `concept → approved | rejected`, `approved → executed | failed`, `failed → approved` (opnieuw proberen na akkoord), `executed → concept` (bewerken na uitvoeren: wordt een update van hetzelfde provider-object). `input` mag alleen wijzigen in `concept`; `proposed_input` nooit.
+- **Constraints:** `unique (tenant_id, idempotency_key)`; `check (status <> 'executed' or provider_object_id is not null)`; `check (status in ('concept','rejected') or approved_at is not null)` — uitgevoerd of goedgekeurd kan niet zonder akkoord. De check staat op `approved_at` en niet op `approved_by_user_id`, omdat die laatste `null` wordt als het lid verdwijnt (#046). Dat het een gebruiker was, dwingt `transitionAction()` af en staat in `audit_log`.
+- **Triggers:** `actions_status_guard` met de overgangen `concept → approved | rejected`, `approved → executed | failed`, `failed → approved` (opnieuw proberen na akkoord), `executed → concept` (bewerken na uitvoeren: wordt een update van hetzelfde provider-object). `actions_guard`:
+  - een nieuwe actie heeft geen akkoord, uitvoering of provider-object, en `input = proposed_input`;
+  - `input` mag alleen wijzigen vanuit `concept`;
+  - `proposed_input` nooit;
+  - `provider_object_id` niet meer zodra hij gezet is.
+  Alleen retentie mag beide inputs legen, samen met `input_purged_at`.
+- **Idempotency-key:** `<card_id>:<type>:<ordinal>`; de job geeft het volgnummer mee (standaard 1). Een herhaald voorstel geeft de bestaande actie terug (`created: false`).
+- **Voorstellen** (`proposeAction()`) kan alleen via een actieve connectie van een provider die het type kan uitvoeren (`actionProviders` in `packages/shared/src/domain/action.ts`).
 - **Bewerken na uitvoeren:** het `provider_object_id` blijft; uitvoeren doet dan een update bij de provider, nooit een nieuw object.
 - **Indexen:** `(tenant_id, card_id)`; `(tenant_id, status)`; `(tenant_id, playbook_id)`.
 - **Verwijderen:** niet door de app; hard via cascade van `cards` (retentie, forget). Inputs worden geleegd door retentie (180 dagen na eindstatus, voorstel).
@@ -484,7 +511,8 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 | `metadata` | jsonb not null | Per `action` (Zod). Alleen ID's, codes, aantallen en enums; het schema staat geen vrije strings toe | — |
 | `request_id` / `job_id` | text null | Correlatie met logs | — |
 
-- **Rechten:** alleen SELECT en INSERT; policies `for select` en `for insert`. Een trigger weigert UPDATE en DELETE ook voor de eigenaar (de cascade bij het opzeggen van een tenant gaat wel door; die is RI).
+- **Rechten:** alleen SELECT en INSERT; policies `for select` en `for insert`. De trigger `audit_log_append_only` weigert UPDATE, DELETE en TRUNCATE ook voor de eigenaar. De cascade bij het opzeggen van een tenant gaat wel door: die DELETE draait binnen de foreign-key-trigger, dus met `pg_trigger_depth() > 1` (#045).
+- **Schrijven:** alleen via `writeAudit()`, in de transactie van de wijziging zelf. `metadata` wordt geparst met `auditMetadataSchemas[action]` (`packages/shared/src/domain/audit.ts`); `actor` is `user` (met `userId`), `agent` of `system`.
 - **Indexen:** `(tenant_id, occurred_at desc)`; `(tenant_id, object_type, object_id)`.
 - **Retentie:** zolang de tenant bestaat. Zie open vraag 6.
 - **Fase:** 1.
@@ -737,7 +765,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `playbooks` | S, I, U(`status`, `confirmed_by_user_id`, `confirmed_at`) | inhoud onveranderlijk (nieuwe versie) |
 | `playbook_examples` | S, I, D | |
 | `cards` | S, I, U(`status`, `title`, `summary`, `payload`, `priority`, `snoozed_until`, `resolved_at`, `resolved_by_user_id`), D | |
-| `actions` | S, I, U(`status`, `input`, `input_purged_at`, `provider_object_id`, `result`, `approved_by_user_id`, `approved_at`, `executed_at`, `attempts`, `last_error_code`) | `proposed_input` onveranderlijk; trigger op overgangen |
+| `actions` | S, I, U(`status`, `proposed_input`, `input`, `input_purged_at`, `provider_object_id`, `result`, `approved_by_user_id`, `approved_at`, `executed_at`, `attempts`, `last_error_code`) | `proposed_input` onveranderlijk behalve legen door retentie (trigger `actions_guard`); trigger op overgangen |
 | `tasks` | S, I, U(`title`, `notes`, `due_at`, `status`, `assignee_user_id`, `completed_at`, `completed_by_user_id`), D | |
 | `audit_log` | S, I | append-only; trigger weigert U/D |
 | `company_profile` | S, I, U(alle) | |

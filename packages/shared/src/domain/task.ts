@@ -9,6 +9,8 @@ export const createTaskInputSchema = z.strictObject({
   assigneeUserId: z.uuid().nullish(),
   /** `ai`: proposed on a card and accepted by the user (docs/data-model.md, tasks). */
   createdBy: z.enum(taskCreatedByValues),
+  /** The card it came from, when the user accepted a suggested task. */
+  originCardId: z.uuid().nullish(),
   entityIds: z.array(z.uuid()).max(50).default([]),
   source: sourceRefSchema,
 });

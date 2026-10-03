@@ -46,3 +46,72 @@ export type TaskCreatedBy = (typeof taskCreatedByValues)[number];
 /** Where a piece of knowledge came from (docs/data-model.md §3.6). */
 export const sourceTypes = ['event', 'document', 'user', 'action', 'system'] as const;
 export type SourceType = (typeof sourceTypes)[number];
+
+export const connectionProviders = ['gmail', 'outlook', 'moneybird', 'mollie'] as const;
+export type ConnectionProvider = (typeof connectionProviders)[number];
+
+export const connectionStatuses = ['active', 'revoked', 'expired', 'purged'] as const;
+export type ConnectionStatus = (typeof connectionStatuses)[number];
+
+/** Why a connection changed status; a code, never a provider error message. */
+export const connectionStatusReasons = [
+  'invalid_grant',
+  'provider_revoked',
+  'user_disconnected',
+  'reauthorized',
+  'data_purged',
+] as const;
+export type ConnectionStatusReason = (typeof connectionStatusReasons)[number];
+
+export const cardKinds = [
+  'email_reply',
+  'quote_request',
+  'payment_overdue',
+  'connection_problem',
+  'knowledge_review',
+  'task_due',
+  'insight',
+] as const;
+export type CardKind = (typeof cardKinds)[number];
+
+export const cardStatuses = ['open', 'snoozed', 'done', 'dismissed', 'expired'] as const;
+export type CardStatus = (typeof cardStatuses)[number];
+
+export const actionTypes = [
+  'email.reply',
+  'moneybird.quote',
+  'moneybird.invoice_reminder',
+  'mollie.payment_link',
+] as const;
+export type ActionType = (typeof actionTypes)[number];
+
+export const actionStatuses = ['concept', 'approved', 'executed', 'failed', 'rejected'] as const;
+export type ActionStatus = (typeof actionStatuses)[number];
+
+/** Who did something: a person, the AI, or the system (jobs, retention). */
+export const actorTypes = ['user', 'agent', 'system'] as const;
+export type ActorType = (typeof actorTypes)[number];
+
+export const auditObjectTypes = ['connections', 'cards', 'actions'] as const;
+export type AuditObjectType = (typeof auditObjectTypes)[number];
+
+export const auditActions = [
+  'connection.created',
+  'connection.reactivated',
+  'connection.revoked',
+  'connection.expired',
+  'connection.purged',
+  'card.created',
+  'card.reopened',
+  'card.snoozed',
+  'card.done',
+  'card.dismissed',
+  'card.expired',
+  'action.proposed',
+  'action.approved',
+  'action.rejected',
+  'action.executed',
+  'action.failed',
+  'action.reopened',
+] as const;
+export type AuditAction = (typeof auditActions)[number];
