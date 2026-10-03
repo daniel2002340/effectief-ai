@@ -1,5 +1,6 @@
 import { oc } from '@orpc/contract';
 import { z } from 'zod';
+import { vatRateBpsSchema } from './domain/money.ts';
 
 // The contract describes shapes only. Who may call a procedure is decided in
 // the API: procedures require a session unless implemented as publicProcedure.
@@ -7,9 +8,6 @@ import { z } from 'zod';
 export const systemStatusOutputSchema = z.object({
   status: z.literal('ok'),
 });
-
-/** VAT rates in basis points (2100 = 21%). */
-export const vatRateBpsSchema = z.union([z.literal(0), z.literal(900), z.literal(2100)]);
 
 export const currentTenantSchema = z.object({
   name: z.string(),

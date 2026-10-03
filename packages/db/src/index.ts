@@ -8,5 +8,6 @@ export {
   databaseEnvSchema,
   migrationEnvSchema,
 } from './env.ts';
+export * from './memory/index.ts';
 export * as schema from './schema/index.ts';
 export { type TenantTransaction, withTenant } from './with-tenant.ts';

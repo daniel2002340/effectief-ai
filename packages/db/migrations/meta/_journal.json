@@ -29,6 +29,27 @@
       "when": 1791040756592,
       "tag": "0003_force_rls_and_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791051767604,
+      "tag": "0004_uuid_v7",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791051776452,
+      "tag": "0005_core_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791051790994,
+      "tag": "0006_memory_rls_grants",
+      "breakpoints": true
     }
   ]
 }

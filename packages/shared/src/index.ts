@@ -1,5 +1,6 @@
 export * from './auth.ts';
 export * from './contract.ts';
+export * from './domain/index.ts';
 export * from './env.ts';
 export * from './errors.ts';
 export * from './jobs.ts';

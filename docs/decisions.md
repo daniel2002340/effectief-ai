@@ -340,3 +340,19 @@ Format:
 - **Context:** Het datamodel is groot en hangt samen; de Drizzle-code alleen laat de motivatie, rechten en retentie niet zien.
 - **Beslissing:** docs/data-model.md is de beschrijving van het schema. Elke schemawijziging werkt het bij in dezelfde PR.
 - **Gevolgen:** Opgenomen in CLAUDE.md (Structuur en Conventies).
+
+## #042 Verwijzende kolommen pas met hun doeltabel
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** Het kerngeheugen (entities, events, relations, tasks) is gebouwd vóór `connections`, `actions`, `cards` en `document_chunks`, waar het ontwerp naar verwijst.
+- **Beslissing:** Kolommen naar een tabel die nog niet bestaat (`events.connection_id`, `caused_by_action_id`, `source_action_id`, `source_chunk_id`, `tasks.origin_card_id`) en `entity_external_refs` komen pas in de PR die de doeltabel aanmaakt, met hun samengestelde FK. Het Zod-bronschema accepteert tot dan alleen `event`, `user` en `system`.
+- **Alternatieven:** Nu een kolom zonder FK (kan tijdelijk naar een rij van een andere tenant wijzen).
+- **Gevolgen:** Elke volgende PR voegt zijn kolommen met `ALTER TABLE` toe; docs/data-model.md §3.10 houdt bij wat er nog mist.
+
+## #043 tenant_id als default uit de transactie
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Repository-functies moesten anders een `tenantId` meekrijgen naast de transactie van `withTenant()`, met kans op een mismatch.
+- **Beslissing:** Op nieuwe tenant-tabellen heeft `tenant_id` als default `nullif(current_setting('app.tenant_id', true), '')::uuid`. Repository-functies krijgen alleen een `TenantTransaction` en geven geen `tenant_id` mee. Buiten `withTenant()` is de default `null` en faalt de insert; RLS (`with check`) blijft de echte grens.
+- **Alternatieven:** `tenantId` als parameter naast de transactie; een eigen transactietype dat de tenant draagt.
+- **Gevolgen:** Helper `tenantId()` in `packages/db/src/schema/columns.ts` voor elke nieuwe tenant-tabel. `tenant_settings` (PK `tenant_id`) houdt een expliciete waarde.

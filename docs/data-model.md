@@ -1,7 +1,7 @@
 # Datamodel
 
 Dit document beschrijft het schema van EffectiefAI 2.0. Elke schemawijziging werkt dit document bij in dezelfde PR (zie CLAUDE.md).
-Beslissingen staan in `docs/decisions.md` (#033–#041). Status: **ontwerp, nog niet gebouwd**.
+Beslissingen staan in `docs/decisions.md` (#033–#041). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
 
 Inhoud:
 
@@ -105,6 +105,7 @@ erDiagram
   - De Better Auth-tabellen houden `gen_random_uuid()` (v4); `tenant_id` is dus een v4.
 - **Tenant-sleutel:** elke tabel heeft naast de PK een `unique (tenant_id, id)`. Verwijzingen gaan via `foreign key (tenant_id, x_id) references x (tenant_id, id)`. Waar een verwijzing `SET NULL` moet worden, gebruiken we de PG15+-vorm `on delete set null (x_id)` zodat `tenant_id` blijft staan. drizzle-kit genereert dat niet; die regels staan handgeschreven in de migratie.
 - **`tenant_id`** → `organization(id) on delete cascade`: een tenant opzeggen verwijdert alles (RI-cascades omzeilen RLS, dat is hier gewenst).
+  - Default: `nullif(current_setting('app.tenant_id', true), '')::uuid`, dus de tenant van de `withTenant()`-transactie. Repository-functies geven nooit een `tenant_id` mee en kunnen dus geen verkeerde meegeven; buiten `withTenant()` is de default `null` en faalt de insert (#043).
 - **Tijdstempels:** altijd `timestamptz`, opgeslagen in UTC, getoond in Europe/Amsterdam. Elke tabel heeft `created_at` (default `now()`); muteerbare tabellen ook `updated_at` (`$onUpdate`, zoals `tenant_settings`). Domeintijd staat apart: `occurred_at` (wanneer het gebeurde) ≠ `created_at` (wanneer wij het vastlegden).
 - **Verwijzingen naar gebruikers** (`*_user_id`): samengestelde FK `(tenant_id, x_user_id) → member(organization_id, user_id)`, zodat alleen leden van de tenant kunnen worden toegewezen. Daarvoor komt een `unique (organization_id, user_id)` op `member` (in onze migratie). `on delete set null (x_user_id)`; wie wat deed blijft in `audit_log`.
 
@@ -241,6 +242,35 @@ Per tabel staat het in de sectie **Verwijderen**.
 
 Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat er later geen breuken nodig zijn), fase 3 pas als die fase begint. Zie open vraag 1.
 
+### 3.10 Bouwstatus
+
+| Tabel | Status | Migratie |
+|---|---|---|
+| `tenant_settings` (+ `content_retention_days`) | gebouwd | 0002, 0005 |
+| `entities`, `entity_identifiers`, `relations` | gebouwd | 0005, 0006 |
+| `events`, `event_contents`, `event_entities` | gebouwd | 0005, 0006 |
+| `tasks`, `task_entities` | gebouwd | 0005, 0006 |
+| overige tabellen | ontwerp | |
+
+Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, en repository-functies in `packages/db/src/memory/` (aanmaken en lezen, nog geen API-procedures).
+
+**Afwijkingen van het ontwerp in de bouw:**
+
+- **Kolommen naar tabellen die nog niet bestaan** komen pas met hun doeltabel, mét samengestelde FK (#042). Een kolom zonder FK zou in de tussentijd naar een rij van een andere tenant kunnen wijzen.
+  - `events.connection_id` en `entity_external_refs` (hele tabel): met `connections`.
+  - `events.caused_by_action_id` en `source_action_id`: met `actions`.
+  - `tasks.origin_card_id`: met `cards`.
+  - `source_chunk_id`: met `document_chunks` (fase 3).
+  - Het Zod-bronschema (`sourceRefSchema`) accepteert tot dan alleen `event`, `user` en `system`. De database-check kent alle vijf waarden al.
+- **`tenant_id` heeft een default** uit de transactie (§3.1, #043).
+- **Extra checks:**
+  - `events`: `(summary is null) = (summarized_at is null)`.
+  - `relations`: `status <> 'confirmed' or confirmed_at is not null`.
+  - `tasks`: `(status = 'done') = (completed_at is not null)`.
+  - `entities`: `merged_into_id <> id`.
+- **Geen check op `confirmed_by_user_id`** bij `relations`. Die kolom wordt `null` als het lid verdwijnt (`set null`), en een check zou het verwijderen van een lid dan blokkeren. Hetzelfde probleem zit in het ontwerp van `facts` en `playbooks` (zie docs/todo.md).
+- **`events.payload` is PG-klasse `—`**: de Zod-schema's staan geen vrije tekst toe (alleen ID's, documentnummers, bedragen en enums).
+
 ---
 
 ## 4. Tabellen
@@ -322,7 +352,9 @@ Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat
 
 - **Constraints:** `unique (tenant_id, source, external_id)` (CLAUDE.md).
 - **Indexen:** `(tenant_id, occurred_at desc)`; `(tenant_id, thread_key)`; `(tenant_id, type, occurred_at desc)`.
-- **Append-only:** geen UPDATE behalve `summary` en `summarized_at` (kolomrecht), want samenvatten gebeurt in een latere job. Een trigger staat dat alleen toe zolang `summary is null`.
+- **Append-only:** geen UPDATE behalve `summary` en `summarized_at` (kolomrecht), want samenvatten gebeurt in een latere job. De trigger `events_summary_once` staat dat alleen toe zolang `summary is null`; daarna geeft hij `integrity_constraint_violation`. `setEventSummary()` werkt met `where summary is null` en geeft `false` terug als er al een samenvatting was.
+- **Payload per type** (`packages/shared/src/domain/event.ts`): mail `{ attachmentCount? }`; offerte en factuur `{ providerObjectId, documentNumber?, totalExclVatCents, vatRateBps }`; betaling `{ providerPaymentId, amountCents, currency: 'EUR', failureCode? }`; `action.executed` `{ providerObjectId }`; `note.added` `{}` (de tekst van een notitie hoort in `event_contents`).
+- **Idempotent opnemen:** `recordEvent()` doet `on conflict (tenant_id, source, external_id) do nothing` en geeft dan het bestaande event terug (`created: false`), zonder de inhoud aan te raken.
 - **Persoonsgegevens:** `summary` (I). `payload` mag volgens het Zod-schema geen vrije tekst bevatten; momentopnames zijn ID's, nummers en bedragen.
 - **Verwijderen:** hard, alleen door forgetEntity en het ontkoppelen van een connectie. Cascade naar `event_contents`, `event_entities`, `card_events`, `playbook_examples`; `set null` op bronverwijzingen.
 - **Retentie:** zolang de tenant bestaat (de bron-inhoud niet, zie `event_contents`). Zie open vraag 4.
@@ -360,7 +392,7 @@ Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat
 
 Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, dan retryt de job (standaard BullMQ-opties); de selectie is idempotent.
 
-- **Bewaartermijn:** `tenant_settings.content_retention_days` (nieuw, default 90, check 30–365). Zie open vraag 3.
+- **Bewaartermijn:** `tenant_settings.content_retention_days` (default 90, check 30–365). `retain_until` = `occurred_at` + die termijn, berekend bij het opnemen. Zie open vraag 3.
 - **Indexen:** `(tenant_id, retain_until)`.
 - **Fase:** 1.
 
@@ -487,7 +519,9 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 | `value` | text not null | Genormaliseerd (lowercase e-mail, E.164-telefoon) | P |
 | `source_type` + bronkolommen | | Zie §3.6 | — |
 
-- **Constraints:** `unique (tenant_id, kind, value)`; `email_domain` niet voor publieke domeinen (gmail.com e.d., lijst in code).
+- **Constraints:** `unique (tenant_id, kind, value)`; `email_domain` niet voor publieke domeinen (gmail.com e.d., `publicEmailDomains` in `packages/shared/src/domain/entity.ts`).
+- **Normaliseren** gebeurt in Zod, vóór het schrijven en het zoeken: e-mail en domein in kleine letters; telefoon naar E.164, waarbij een Nederlands nummer zonder landcode (`06…`) `+31…` wordt; KvK 8 cijfers.
+- **Dubbel:** bestaat de waarde al (ook bij een andere entiteit), dan geeft `addEntityIdentifier()` de bestaande rij terug met `created: false`; de aanroeper beslist.
 - **Verwijderen:** hard (gebruiker of cascade). **Fase:** 1.
 
 #### `entity_external_refs`
@@ -704,7 +738,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `playbook_examples` | S, I, D | |
 | `cards` | S, I, U(`status`, `title`, `summary`, `payload`, `priority`, `snoozed_until`, `resolved_at`, `resolved_by_user_id`), D | |
 | `actions` | S, I, U(`status`, `input`, `input_purged_at`, `provider_object_id`, `result`, `approved_by_user_id`, `approved_at`, `executed_at`, `attempts`, `last_error_code`) | `proposed_input` onveranderlijk; trigger op overgangen |
-| `tasks` | S, I, U(alle inhoud en status), D | |
+| `tasks` | S, I, U(`title`, `notes`, `due_at`, `status`, `assignee_user_id`, `completed_at`, `completed_by_user_id`), D | |
 | `audit_log` | S, I | append-only; trigger weigert U/D |
 | `company_profile` | S, I, U(alle) | |
 | `documents` | S, I, U(`status`, `title`), D | |
@@ -714,7 +748,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 
 `auth_runtime` krijgt op geen van deze tabellen rechten. Twee `SECURITY DEFINER`-functies (eigenaar: migratierol, `search_path` vast, alleen `EXECUTE` voor `app_runtime`): `resolve_connection(provider, nango_connection_id)` en `list_tenant_ids()`. Ze geven alleen ID's terug.
 
-De isolatietest per tabel (CLAUDE.md) controleert ook dat de werkelijke grants gelijk zijn aan deze tabel, zodat dit document en de database niet uit elkaar lopen.
+De test `packages/db/src/memory/grants.test.ts` vergelijkt de werkelijke grants van alle tabellen met `tenant_id` met deze tabel, zodat dit document en de database niet uit elkaar lopen. Een nieuwe tenant-tabel laat die test falen tot hij er in staat.
 
 ---
 

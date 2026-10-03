@@ -33,6 +33,8 @@ export const tenantSettings = pgTable(
       .references(() => organization.id, { onDelete: 'cascade' }),
     /** Default VAT rate for new quotes, in basis points (2100 = 21%). */
     defaultVatRateBps: integer('default_vat_rate_bps').default(2100).notNull(),
+    /** How long event_contents (mail text) is kept, from occurred_at (#037). */
+    contentRetentionDays: integer('content_retention_days').default(90).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .defaultNow()
@@ -41,6 +43,10 @@ export const tenantSettings = pgTable(
   },
   (table) => [
     check('tenant_settings_vat_rate', sql`${table.defaultVatRateBps} in (0, 900, 2100)`),
+    check(
+      'tenant_settings_content_retention_days',
+      sql`${table.contentRetentionDays} between 30 and 365`,
+    ),
     tenantIsolation(table.tenantId),
   ],
 ).enableRLS();

@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, pgPolicy, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  pgPolicy,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { appRuntime, authRuntime, currentTenantId } from './roles.ts';
 
 // Better Auth tables (decision #030), generated with `auth generate` and
@@ -125,6 +134,8 @@ export const member = pgTable(
   (table) => [
     index('member_organization_id_idx').on(table.organizationId),
     index('member_user_id_idx').on(table.userId),
+    // Target of the composite (tenant_id, *_user_id) foreign keys on tenant tables.
+    unique('member_organization_id_user_id_unique').on(table.organizationId, table.userId),
     authFullAccess,
     pgPolicy('app_runtime_read_own_tenant', {
       for: 'select',
