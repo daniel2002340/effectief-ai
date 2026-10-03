@@ -7,6 +7,7 @@ import {
   cardKinds,
   connectionProviders,
   connectionStatusReasons,
+  playbookScopes,
 } from './status.ts';
 
 // audit_log: append-only, and it survives every deletion, so it holds no
@@ -46,6 +47,19 @@ const actionMetadata = z.strictObject({
   attempts: z.int().min(0).optional(),
 });
 
+const factMetadata = z.strictObject({ entityId: z.uuid() });
+
+/** On the old fact: which fact replaced it. */
+const factSupersededMetadata = z.strictObject({
+  entityId: z.uuid(),
+  supersededById: z.uuid(),
+});
+
+const playbookMetadata = z.strictObject({
+  scope: z.enum(playbookScopes),
+  version: z.int().min(1),
+});
+
 export const auditMetadataSchemas = {
   'connection.created': connectionMetadata,
   'connection.reactivated': connectionMetadata,
@@ -64,6 +78,12 @@ export const auditMetadataSchemas = {
   'action.executed': actionMetadata,
   'action.failed': actionMetadata,
   'action.reopened': actionMetadata,
+  'fact.confirmed': factMetadata,
+  'fact.rejected': factMetadata,
+  'fact.superseded': factSupersededMetadata,
+  'playbook.confirmed': playbookMetadata,
+  'playbook.rejected': playbookMetadata,
+  'playbook.retired': playbookMetadata,
 } satisfies Record<AuditAction, z.ZodType>;
 
 export type AuditMetadata<A extends AuditAction = AuditAction> = z.infer<

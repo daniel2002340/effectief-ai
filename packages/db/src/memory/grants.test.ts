@@ -100,6 +100,34 @@ const expectedGrants: Record<string, Expected> = {
     ],
   },
   audit_log: { table: ['SELECT', 'INSERT'] },
+  facts: {
+    table: ['SELECT', 'INSERT'],
+    updateColumns: [
+      'status',
+      'valid_to',
+      'superseded_by_id',
+      'confirmed_by_user_id',
+      'confirmed_at',
+      'last_confirmed_at',
+      'updated_at',
+    ],
+  },
+  playbooks: {
+    table: ['SELECT', 'INSERT'],
+    updateColumns: ['status', 'confirmed_by_user_id', 'confirmed_at', 'updated_at'],
+  },
+  playbook_examples: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  documents: {
+    table: ['SELECT', 'INSERT', 'DELETE'],
+    updateColumns: ['status', 'title', 'updated_at'],
+  },
+  document_chunks: { table: ['SELECT', 'INSERT'] },
+  document_entities: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  fact_embeddings: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  playbook_embeddings: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  chunk_embeddings: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  company_profile: { table: ['SELECT', 'INSERT', 'UPDATE'] },
+  insights: { table: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] },
 };
 
 const db = openTestDatabases();

@@ -1,8 +1,10 @@
+import { embeddingModels } from '@effectief/ai';
 import { sourceTypes } from '@effectief/shared';
 import { type SQL, sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   check,
+  customType,
   foreignKey,
   type PgColumn,
   text,
@@ -52,13 +54,11 @@ export const memberRef = (name: string, tenant: AnyPgColumn, user: AnyPgColumn) 
     foreignColumns: [member.organizationId, member.userId],
   }).onDelete('set null');
 
-/**
- * Source columns for AI knowledge (docs/data-model.md §3.6). `source_chunk_id`
- * follows with document_chunks.
- */
+/** Source columns for AI knowledge (docs/data-model.md §3.6). */
 export const sourceColumns = () => ({
   sourceType: text('source_type', { enum: sourceTypes }).notNull(),
   sourceEventId: uuid('source_event_id'),
+  sourceChunkId: uuid('source_chunk_id'),
   sourceUserId: uuid('source_user_id'),
   sourceActionId: uuid('source_action_id'),
   aiModel: text('ai_model'),
@@ -67,3 +67,38 @@ export const sourceColumns = () => ({
 
 export const sourceTypeCheck = (table: string, column: PgColumn) =>
   check(`${table}_source_type`, inList(column, sourceTypes));
+
+/**
+ * pgvector `vector` without a fixed dimension: the dimension is stored per row
+ * and checked against the model (docs/data-model.md §3.5). HNSW indexes cast
+ * to the fixed dimension of one model, in a hand-written migration.
+ */
+export const vector = customType<{ data: number[]; driverData: string }>({
+  dataType: () => 'vector',
+  toDriver: (value) => `[${value.join(',')}]`,
+  fromDriver: (value) => JSON.parse(value) as number[],
+});
+
+/**
+ * Every (model, model_version, dimensions) combination in packages/ai/models.ts.
+ * A row with another combination, or whose vector has another dimension than
+ * the row says, is rejected by the database.
+ */
+export const embeddingModelCheck = (
+  table: string,
+  t: { model: PgColumn; modelVersion: PgColumn; dimensions: PgColumn; embedding: PgColumn },
+) => {
+  const quote = (value: string) => `'${value.replaceAll("'", "''")}'`;
+  const allowed = Object.entries(embeddingModels).flatMap(([model, config]) =>
+    [config.documentVersion, config.queryVersion].map(
+      (version) => `(${quote(model)}, ${quote(version)}, ${config.dimensions})`,
+    ),
+  );
+  return [
+    check(
+      `${table}_model`,
+      sql`(${t.model}, ${t.modelVersion}, ${t.dimensions}) in (${sql.raw(allowed.join(', '))})`,
+    ),
+    check(`${table}_dimensions`, sql`vector_dims(${t.embedding}) = ${t.dimensions}`),
+  ];
+};

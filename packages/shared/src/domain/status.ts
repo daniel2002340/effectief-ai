@@ -92,7 +92,7 @@ export type ActionStatus = (typeof actionStatuses)[number];
 export const actorTypes = ['user', 'agent', 'system'] as const;
 export type ActorType = (typeof actorTypes)[number];
 
-export const auditObjectTypes = ['connections', 'cards', 'actions'] as const;
+export const auditObjectTypes = ['connections', 'cards', 'actions', 'facts', 'playbooks'] as const;
 export type AuditObjectType = (typeof auditObjectTypes)[number];
 
 export const auditActions = [
@@ -113,5 +113,39 @@ export const auditActions = [
   'action.executed',
   'action.failed',
   'action.reopened',
+  'fact.confirmed',
+  'fact.rejected',
+  'fact.superseded',
+  'playbook.confirmed',
+  'playbook.rejected',
+  'playbook.retired',
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
+
+/** `retired`: replaced by a newer version or withdrawn by the user. */
+export const playbookStatuses = ['proposed', 'confirmed', 'rejected', 'retired'] as const;
+export type PlaybookStatus = (typeof playbookStatuses)[number];
+
+export const playbookScopes = ['company', 'user', 'customer'] as const;
+export type PlaybookScope = (typeof playbookScopes)[number];
+
+export const documentOrigins = ['upload', 'connection'] as const;
+export type DocumentOrigin = (typeof documentOrigins)[number];
+
+export const documentStatuses = ['pending', 'processing', 'ready', 'failed'] as const;
+export type DocumentStatus = (typeof documentStatuses)[number];
+
+export const companySectors = [
+  'installation',
+  'construction',
+  'gardening',
+  'cleaning',
+  'events',
+  'photography',
+  'business_services',
+  'other',
+] as const;
+export type CompanySector = (typeof companySectors)[number];
+
+export const insightKinds = ['open_quotes', 'payment_behaviour'] as const;
+export type InsightKind = (typeof insightKinds)[number];

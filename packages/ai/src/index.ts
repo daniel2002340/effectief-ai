@@ -1,1 +1,6 @@
-export { models } from './models.ts';
+export {
+  activeEmbeddingModels,
+  type EmbeddingModel,
+  embeddingModels,
+  models,
+} from './models.ts';

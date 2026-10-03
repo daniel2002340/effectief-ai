@@ -78,6 +78,8 @@ const proposeBase = {
    * existing action back, so the idempotency key stays deterministic.
    */
   ordinal: z.int().min(1).max(1000).default(1),
+  /** The playbook the proposal followed, if any. */
+  playbookId: z.uuid().optional(),
   aiModel: providerCode.optional(),
   aiTraceId: providerCode.optional(),
   actor: actorSchema,

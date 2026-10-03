@@ -42,6 +42,7 @@ import {
   updatedAt,
 } from './columns.ts';
 import { actions, cards, connections } from './feed.ts';
+import { chunkRef } from './knowledge.ts';
 import { tenantIsolation } from './tenant.ts';
 
 // The company memory (docs/data-model.md, part B and the timeline). Every
@@ -55,14 +56,22 @@ import { tenantIsolation } from './tenant.ts';
 
 // Return types are explicit: events, actions, cards and tasks reference each
 // other, which TypeScript cannot infer.
-const eventRef = (name: string, tenant: AnyPgColumn, event: AnyPgColumn): ForeignKeyBuilder =>
+export const eventRef = (
+  name: string,
+  tenant: AnyPgColumn,
+  event: AnyPgColumn,
+): ForeignKeyBuilder =>
   foreignKey({
     name,
     columns: [tenant, event],
     foreignColumns: [events.tenantId, events.id],
   }).onDelete('set null');
 
-const actionRef = (name: string, tenant: AnyPgColumn, action: AnyPgColumn): ForeignKeyBuilder =>
+export const actionRef = (
+  name: string,
+  tenant: AnyPgColumn,
+  action: AnyPgColumn,
+): ForeignKeyBuilder =>
   foreignKey({
     name,
     columns: [tenant, action],
@@ -162,6 +171,7 @@ export const entityIdentifiers = pgTable(
       foreignColumns: [entities.tenantId, entities.id],
     }).onDelete('cascade'),
     eventRef('entity_identifiers_source_event_fk', t.tenantId, t.sourceEventId),
+    chunkRef('entity_identifiers_source_chunk_fk', t.tenantId, t.sourceChunkId),
     memberRef('entity_identifiers_source_user_fk', t.tenantId, t.sourceUserId),
     actionRef('entity_identifiers_source_action_fk', t.tenantId, t.sourceActionId),
     check('entity_identifiers_kind', inList(t.kind, identifierKinds)),
@@ -203,6 +213,7 @@ export const entityRelations = pgTable(
     }).onDelete('cascade'),
     memberRef('relations_confirmed_by_fk', t.tenantId, t.confirmedByUserId),
     eventRef('relations_source_event_fk', t.tenantId, t.sourceEventId),
+    chunkRef('relations_source_chunk_fk', t.tenantId, t.sourceChunkId),
     memberRef('relations_source_user_fk', t.tenantId, t.sourceUserId),
     actionRef('relations_source_action_fk', t.tenantId, t.sourceActionId),
     check('relations_type', inList(t.type, relationTypes)),
@@ -311,6 +322,7 @@ export const tasks = pgTable(
       foreignColumns: [cards.tenantId, cards.id],
     }).onDelete('set null'),
     eventRef('tasks_source_event_fk', t.tenantId, t.sourceEventId),
+    chunkRef('tasks_source_chunk_fk', t.tenantId, t.sourceChunkId),
     memberRef('tasks_source_user_fk', t.tenantId, t.sourceUserId),
     actionRef('tasks_source_action_fk', t.tenantId, t.sourceActionId),
     check('tasks_status', inList(t.status, taskStatuses)),
