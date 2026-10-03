@@ -1,0 +1,4 @@
+{
+  "extends": "@effectief/config/tsconfig.node.json",
+  "include": ["src", "*.ts"]
+}

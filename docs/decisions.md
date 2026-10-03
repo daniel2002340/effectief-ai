@@ -159,3 +159,41 @@ Format:
 - **Context:** RLS geldt niet voor superusers en tabeleigenaren. De lokale en CI-database draaien nu als superuser, dus RLS-policies zouden daar niets afdwingen.
 - **Beslissing:** Bij de eerste tabel met klantdata: een rol zonder BYPASSRLS en zonder eigendom van de tabellen (bijv. via `SET LOCAL ROLE` in withTenant() of een aparte login), plus `FORCE ROW LEVEL SECURITY`. Nu nog niet, want er zijn geen tabellen.
 - **Gevolgen:** De isolatietests van de eerste tabel moeten draaien onder die rol, anders bewijzen ze niets.
+
+## #019 api en worker als één gebundeld artifact zonder node_modules
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Workspace-packages exporteren TypeScript-bron (#016) en hun dependencies (bijv. `pg`) zijn geen directe dependencies van de app; extern laten gaf runtime-fouten.
+- **Beslissing:** tsup bundelt alles (`noExternal: /.*/`) tot één ESM-bestand, met een `createRequire`-banner voor CommonJS-dependencies. Het image bevat alleen Node en `dist/`. In dev draait Node de TypeScript-bron direct (type stripping), zonder tsx.
+- **Alternatieven:** Third-party extern houden en `pnpm deploy --prod` in het image (groter image, dependencies dubbel declareren).
+- **Gevolgen:** Een dependency met native addons of losse bestanden (bijv. pino-transports) moet expliciet extern worden gezet en in het image komen. Zie ook `erasableSyntaxOnly` in de tsconfig.
+
+## #020 Webhooks alleen via registerWebhookRoutes()
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Handtekeningen moeten op de exacte ontvangen bytes worden gecontroleerd (#013).
+- **Beslissing:** Eén eigen scope onder `/webhooks` waarin elke body een ruwe `Buffer` blijft; geen extra dependency. `auth: 'hmac'` vereist `config.hmac.verify` en is alleen binnen deze scope toegestaan; anders start de server niet. Handlers parsen de body zelf met Zod na de check.
+- **Alternatieven:** `fastify-raw-body` (extra dependency, bewaart body dubbel).
+- **Gevolgen:** Elke nieuwe webhookbron (Nango, Mollie) is een route in deze scope met een eigen verify-functie.
+
+## #021 Web en api op dezelfde origin, geen CORS
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** De CORS-plugin registreert een eigen `OPTIONS *`-route zonder auth-type; bovendien maakt cross-origin sessiecookies lastiger.
+- **Beslissing:** Web roept de api relatief aan onder `/api` (`VITE_API_BASE_PATH`). In dev proxyt Vite naar de api; in productie routeert één reverse proxy `/api` en `/webhooks` naar de api en de rest naar web.
+- **Alternatieven:** Aparte api-domeinnaam met `@fastify/cors`.
+- **Gevolgen:** De hostingkeuze moet path-based routing ondersteunen. Sessiecookies kunnen `SameSite=Strict` zijn.
+
+## #022 Route-auth: type `contract` voor oRPC en sessies voorlopig dicht
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Alle oRPC-procedures lopen via één Fastify-route; auth moet per procedure gelden.
+- **Beslissing:** Die ene route heeft `auth: 'contract'`; elke procedure declareert `meta.auth` (`session` of `public`), gecontroleerd bij opstarten en afgedwongen in middleware. `session` weigert alles (401) totdat er een sessiesysteem is.
+- **Gevolgen:** Het sessiesysteem vult de bestaande `session`-checks in; er komt geen nieuwe uitzonderingsroute.
+
+## #023 Rate limiting in Valkey
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Meerdere api-instanties moeten dezelfde tellers delen.
+- **Beslissing:** `@fastify/rate-limit` met Valkey als store, globaal 300 verzoeken per minuut per IP, fail-closed als Valkey weg is.
+- **Gevolgen:** Achter een proxy moet `trustProxy` goed staan, anders delen alle gebruikers één IP. Strengere limieten per route (login, webhooks) later.

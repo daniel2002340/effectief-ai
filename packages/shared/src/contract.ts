@@ -11,7 +11,6 @@ const base = oc.$meta<ContractMeta>({});
 
 export const systemStatusOutputSchema = z.object({
   status: z.literal('ok'),
-  version: z.string(),
 });
 
 export const contract = {
