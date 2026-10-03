@@ -1,0 +1,29 @@
+{
+  "name": "effectief-ai",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "turbo run typecheck",
+    "knip": "knip",
+    "db:generate": "pnpm --filter @effectief/db db:generate",
+    "db:migrate": "pnpm --filter @effectief/db db:migrate",
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "catalog:",
+    "knip": "6.39.0",
+    "lefthook": "2.1.16",
+    "turbo": "2.11.7",
+    "typescript": "catalog:"
+  }
+}
