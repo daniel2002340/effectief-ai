@@ -193,7 +193,7 @@ Format:
 
 ## #023 Rate limiting in Valkey
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** vervangen door #027
 - **Context:** Meerdere api-instanties moeten dezelfde tellers delen.
 - **Beslissing:** `@fastify/rate-limit` met Valkey als store, globaal 300 verzoeken per minuut per IP, fail-closed als Valkey weg is.
 - **Gevolgen:** Achter een proxy moet `trustProxy` goed staan, anders delen alle gebruikers één IP. Strengere limieten per route (login, webhooks) later.
@@ -221,3 +221,11 @@ Format:
 - **Beslissing:** Migraties draaien als eigenaar; app en tests als een aparte rol zonder BYPASSRLS en zonder eigenaarschap. Elke tenant-tabel heeft `FORCE ROW LEVEL SECURITY`. Een test faalt als de app-rol eigenaar is of BYPASSRLS heeft. Sessie 1 (de eerste tabel) is pas klaar als dit allemaal staat.
 - **Alternatieven:** Uitstellen tot later (#018); te riskant, want dan bestaan er al tabellen en tests die onder de verkeerde rol groen zijn.
 - **Gevolgen:** Twee database-URL's (eigenaar voor migraties, app-rol voor runtime en tests), ook in CI en docker-compose.
+
+## #027 Rate limiting: proxy-instelling en uitzonderingen
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** #023 liet `trustProxy` en uitzonderingen open; zonder `/health` buiten de limiet valt de healthcheck weg als Valkey stuk is.
+- **Beslissing:** Globale limiet per IP in Valkey. `API_TRUST_PROXY` is verplicht en Zod-gevalideerd: `false`, een aantal hops, of een lijst proxy-IP's/CIDR's; `true` wordt geweigerd. `/health` (via `rateLimit: false` op de route) en webhookroutes (`auth: 'hmac'`) vallen buiten de limiet. Is Valkey onbereikbaar, dan blijft `/health` werken en worden gelimiteerde verzoeken geweigerd (500).
+- **Alternatieven:** Uitzonderingen op pad (`allowList`); niet gekozen, de uitzondering hoort bij de routedeclaratie.
+- **Gevolgen:** Bij hosting achter een proxy moet `API_TRUST_PROXY` precies de proxy beschrijven. Strengere limieten per route (login) later.

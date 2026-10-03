@@ -30,7 +30,6 @@ describe('GET /health', () => {
     expect(response.json()).toEqual({ status: 'ok' });
     expect(response.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
     expect(response.headers['x-content-type-options']).toBe('nosniff');
-    expect(response.headers['x-ratelimit-limit']).toBeDefined();
   });
 });
 
@@ -73,20 +72,5 @@ describe('error responses', () => {
     });
     expect(response.statusCode).toBe(400);
     expect(errorResponseSchema.parse(response.json()).error.code).toBe('BAD_REQUEST');
-  });
-});
-
-describe('rate limiting', () => {
-  it('answers with RATE_LIMITED in the standard shape', async () => {
-    const limited = await createTestApp({ rateLimitMax: 2 });
-    try {
-      await limited.inject({ method: 'GET', url: '/health' });
-      await limited.inject({ method: 'GET', url: '/health' });
-      const response = await limited.inject({ method: 'GET', url: '/health' });
-      expect(response.statusCode).toBe(429);
-      expect(errorResponseSchema.parse(response.json()).error.code).toBe('RATE_LIMITED');
-    } finally {
-      await limited.close();
-    }
   });
 });

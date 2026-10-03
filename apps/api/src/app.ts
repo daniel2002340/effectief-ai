@@ -1,13 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import helmet from '@fastify/helmet';
-import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
 import type { ApiEnv } from './env.ts';
-import { AppError } from './errors.ts';
 import { loggerOptions } from './logger.ts';
 import { orpcRoutes } from './orpc/plugin.ts';
 import { errorHandler } from './plugins/error-handler.ts';
+import { rateLimit } from './plugins/rate-limit.ts';
 import { registerWebhookRoutes } from './plugins/raw-body.ts';
 import { routeAuth } from './plugins/route-auth.ts';
 import { healthRoutes } from './routes/health.ts';
@@ -33,6 +32,8 @@ export async function buildApp({
     logger: loggerOptions(env),
     genReqId: () => randomUUID(),
     bodyLimit: 1024 * 1024,
+    // Which proxies may set X-Forwarded-For; decides the client IP for rate limiting.
+    trustProxy: toTrustProxy(env.API_TRUST_PROXY),
   });
 
   // Must come first: routes registered below are checked by these hooks.
@@ -40,18 +41,17 @@ export async function buildApp({
   await app.register(routeAuth);
 
   await app.register(helmet);
-  await app.register(rateLimit, {
-    global: true,
-    max: rateLimitMax,
-    timeWindow: '1 minute',
-    redis,
-    nameSpace: 'ratelimit:api:',
-    errorResponseBuilder: () => new AppError('RATE_LIMITED'),
-  });
+  await app.register(rateLimit, { redis, max: rateLimitMax });
 
   await app.register(healthRoutes);
   await app.register(orpcRoutes);
   await registerWebhookRoutes(app, webhooks);
 
   return app;
+}
+
+/** Fastify takes a hop count as a function: trust the first n hops from our side. */
+function toTrustProxy(value: ApiEnv['API_TRUST_PROXY']) {
+  if (typeof value === 'number') return (_address: string, hop: number) => hop < value;
+  return value;
 }

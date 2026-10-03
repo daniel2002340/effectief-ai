@@ -14,6 +14,7 @@ describe('api env', () => {
         LOG_LEVEL: 'silent',
         API_HOST: '127.0.0.1',
         API_PORT: '3000',
+        API_TRUST_PROXY: 'false',
         DATABASE_URL: 'mysql://localhost/db',
         REDIS_URL: 'redis://localhost:6379',
       }),

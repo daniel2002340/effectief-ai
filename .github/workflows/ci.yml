@@ -20,6 +20,7 @@ env:
   REDIS_URL: redis://localhost:6379
   API_HOST: 127.0.0.1
   API_PORT: 3000
+  API_TRUST_PROXY: "false"
   VITE_API_BASE_PATH: /api
   WEB_DEV_API_TARGET: http://localhost:3000
 
