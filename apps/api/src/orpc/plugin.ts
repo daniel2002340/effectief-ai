@@ -8,7 +8,7 @@ import { toErrorIssues } from '../issues.ts';
 import { assertContractAuth } from './contract-auth.ts';
 import { type ApiContext, router } from './router.ts';
 
-export const API_PREFIX = '/api';
+const API_PREFIX = '/api';
 
 function encodeError(error: ORPCError<string, unknown>): ErrorResponse {
   // The request id is filled in by the root interceptor below.

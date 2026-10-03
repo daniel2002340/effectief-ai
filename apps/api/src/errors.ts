@@ -1,6 +1,6 @@
 import type { ErrorCode, ErrorIssue, ErrorResponse } from '@effectief/shared';
 
-export const statusByCode: Record<ErrorCode, number> = {
+const statusByCode: Record<ErrorCode, number> = {
   BAD_REQUEST: 400,
   VALIDATION_FAILED: 400,
   UNAUTHORIZED: 401,
@@ -15,7 +15,7 @@ export const statusByCode: Record<ErrorCode, number> = {
 };
 
 /** Default user-facing messages, in Dutch. */
-export const messageByCode: Record<ErrorCode, string> = {
+const messageByCode: Record<ErrorCode, string> = {
   BAD_REQUEST: 'Het verzoek is ongeldig.',
   VALIDATION_FAILED: 'Niet alle gegevens zijn goed ingevuld.',
   UNAUTHORIZED: 'Je bent niet ingelogd.',

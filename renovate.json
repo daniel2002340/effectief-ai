@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests", ":pinDevDependencies"],
+  "timezone": "Europe/Amsterdam",
+  "schedule": ["before 7am on monday"],
+  "rangeStrategy": "pin",
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 7am on the first day of the month"]
+  },
+  "packageRules": [
+    {
+      "description": "Node 24 LTS only (CLAUDE.md); covers .nvmrc, Docker images and @types/node",
+      "matchPackageNames": ["node", "@types/node"],
+      "allowedVersions": "<25"
+    },
+    { "groupName": "oRPC", "matchPackageNames": ["@orpc/**"] },
+    { "groupName": "TanStack", "matchPackageNames": ["@tanstack/**"] },
+    {
+      "groupName": "React",
+      "matchPackageNames": ["react", "react-dom", "@types/react", "@types/react-dom"]
+    },
+    { "groupName": "Drizzle", "matchPackageNames": ["drizzle-orm", "drizzle-kit"] },
+    { "groupName": "Fastify", "matchPackageNames": ["fastify", "@fastify/**", "fastify-plugin"] },
+    { "groupName": "Tailwind", "matchPackageNames": ["tailwindcss", "@tailwindcss/**"] },
+    { "groupName": "Vite and Vitest", "matchPackageNames": ["vite", "vitest", "@vitejs/**"] },
+    {
+      "description": "One TypeScript version for the whole workspace; 7 waits for tooling (decision #015)",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    }
+  ]
+}

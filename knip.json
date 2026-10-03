@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {},
+    "apps/*": {},
+    "apps/web": {
+      "entry": ["src/routes/**/*.tsx"]
+    },
+    "packages/*": {}
+  },
+  "ignoreIssues": {
+    "apps/web/src/components/ui/**": ["exports", "types"]
+  }
+}

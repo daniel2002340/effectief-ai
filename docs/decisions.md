@@ -205,3 +205,11 @@ Format:
 - **Beslissing:** Radix als basis (stijl new-york, kleur neutral), componenten in `apps/web/src/components/ui`, `cn` via `@/lib/utils`. Gedeelde paginaonderdelen zoals `PageHeader` in `apps/web/src/components`.
 - **Alternatieven:** Base UI (nieuwer, minder ervaring mee).
 - **Gevolgen:** Nieuwe componenten via `pnpm dlx shadcn add <naam>` in apps/web; pin daarna de versies.
+
+## #025 CI en dependency-updates
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** v1 had geen CI; supply-chain-aanvallen via verse releases komen vaker voor.
+- **Beslissing:** Eén GitHub Actions-workflow met Postgres en Valkey als services: typecheck, Biome, knip, migraties + drift, tests, build, startup-smoketest, Playwright. gitleaks als binary met checksum (geen gitleaks-action, die vraagt een licentie voor organisaties). Renovate pint alles, wacht 3 dagen na een release, groepeert per ecosysteem en blijft op Node 24 en TypeScript 6.
+- **Alternatieven:** Dependabot (minder groeperings- en wachtopties).
+- **Gevolgen:** Renovate moet als GitHub-app op de repo worden geïnstalleerd. Docker-images worden in CI nog niet gebouwd.

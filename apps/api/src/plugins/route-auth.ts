@@ -14,9 +14,9 @@ import { AppError } from '../errors.ts';
  * Those procedures declare their own auth in the contract meta, which is
  * checked at startup by assertContractAuth().
  */
-export type RouteAuth = AuthType | 'contract';
+type RouteAuth = AuthType | 'contract';
 
-export interface HmacConfig {
+interface HmacConfig {
   /** Verifies the signature against the exact bytes that were received. */
   verify: (request: FastifyRequest, rawBody: Buffer) => boolean | Promise<boolean>;
 }
@@ -32,7 +32,7 @@ declare module 'fastify' {
 
 const routeAuthValues: readonly RouteAuth[] = [...authTypeSchema.options, 'contract'];
 
-export class RouteAuthError extends Error {
+class RouteAuthError extends Error {
   constructor(route: Pick<RouteOptions, 'method' | 'url'>, reason: string) {
     super(`Route ${String(route.method)} ${route.url}: ${reason}`);
     this.name = 'RouteAuthError';

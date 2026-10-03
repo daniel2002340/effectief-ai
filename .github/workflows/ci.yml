@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Test configuration only; these values match the service containers below and are not secrets.
+env:
+  NODE_ENV: test
+  LOG_LEVEL: silent
+  DATABASE_URL: postgres://effectief:effectief@localhost:5432/effectief
+  REDIS_URL: redis://localhost:6379
+  API_HOST: 127.0.0.1
+  API_PORT: 3000
+  VITE_API_BASE_PATH: /api
+  WEB_DEV_API_TARGET: http://localhost:3000
+
+jobs:
+  checks:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: effectief
+          POSTGRES_PASSWORD: effectief
+          POSTGRES_DB: effectief
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U effectief"
+          --health-interval 2s --health-timeout 5s --health-retries 20
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm exec biome ci .
+
+      - name: Unused code (knip)
+        run: pnpm knip
+
+      - name: Migrations apply
+        run: pnpm db:migrate
+
+      - name: Migration drift
+        run: |
+          pnpm db:generate
+          if [ -n "$(git status --porcelain packages/db/migrations)" ]; then
+            echo "::error::Schema and migrations differ. Run 'pnpm db:generate' and commit the result."
+            git status --porcelain packages/db/migrations
+            exit 1
+          fi
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Startup smoke test (api)
+        run: |
+          node apps/api/dist/main.js > api.log 2>&1 &
+          if ! curl --silent --fail --retry 20 --retry-delay 1 --retry-all-errors \
+            "http://127.0.0.1:${API_PORT}/health"; then
+            cat api.log
+            exit 1
+          fi
+
+      - name: Install Playwright browser
+        run: pnpm --filter @effectief/web exec playwright install --with-deps chromium
+
+      - name: End-to-end smoke test (web)
+        run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          if-no-files-found: ignore
+
+  gitleaks:
+    name: Secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: Scan history
+        run: ./gitleaks git --redact --no-banner --verbose .

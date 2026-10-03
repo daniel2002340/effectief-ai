@@ -5,7 +5,7 @@ import { afterAll } from 'vitest';
 import { type AppDependencies, buildApp } from '../src/app.ts';
 import { apiEnvSchema } from '../src/env.ts';
 
-export const testEnv = parseEnv(apiEnvSchema, { ...process.env, LOG_LEVEL: 'silent' });
+const testEnv = parseEnv(apiEnvSchema, { ...process.env, LOG_LEVEL: 'silent' });
 
 const redis = new Redis(testEnv.REDIS_URL);
 afterAll(() => redis.quit());

@@ -9,15 +9,14 @@
       "outputs": ["dist/**"],
       "env": ["VITE_*"]
     },
-    "typecheck": {
-      "dependsOn": ["^typecheck"]
-    },
+    "typecheck": {},
     "test": {
-      "dependsOn": ["^build"],
-      "env": ["DATABASE_URL", "REDIS_URL"]
+      "env": ["NODE_ENV", "LOG_LEVEL", "DATABASE_URL", "REDIS_URL", "API_HOST", "API_PORT"]
     },
     "test:e2e": {
-      "dependsOn": ["build"]
+      "dependsOn": ["build"],
+      "passThroughEnv": ["CI"],
+      "env": ["VITE_*"]
     },
     "dev": {
       "cache": false,
