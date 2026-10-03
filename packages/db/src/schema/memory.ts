@@ -17,9 +17,11 @@ import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   check,
+  type ForeignKeyBuilder,
   foreignKey,
   index,
   jsonb,
+  type PgTableExtraConfigValue,
   pgTable,
   primaryKey,
   text,
@@ -28,17 +30,18 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { member } from './auth.ts';
 import {
   createdAt,
   id,
   inList,
   jsonbIs,
+  memberRef,
   sourceColumns,
   sourceTypeCheck,
   tenantId,
   updatedAt,
 } from './columns.ts';
+import { actions, cards, connections } from './feed.ts';
 import { tenantIsolation } from './tenant.ts';
 
 // The company memory (docs/data-model.md, part B and the timeline). Every
@@ -50,19 +53,20 @@ import { tenantIsolation } from './tenant.ts';
 // migration to `ON DELETE SET NULL (column)`, so tenant_id stays put; drizzle-kit
 // cannot generate that form.
 
-/** (tenant_id, user_id) → member, so only members of the tenant can be referenced. */
-const memberRef = (name: string, tenant: AnyPgColumn, user: AnyPgColumn) =>
-  foreignKey({
-    name,
-    columns: [tenant, user],
-    foreignColumns: [member.organizationId, member.userId],
-  }).onDelete('set null');
-
-const eventRef = (name: string, tenant: AnyPgColumn, event: AnyPgColumn) =>
+// Return types are explicit: events, actions, cards and tasks reference each
+// other, which TypeScript cannot infer.
+const eventRef = (name: string, tenant: AnyPgColumn, event: AnyPgColumn): ForeignKeyBuilder =>
   foreignKey({
     name,
     columns: [tenant, event],
     foreignColumns: [events.tenantId, events.id],
+  }).onDelete('set null');
+
+const actionRef = (name: string, tenant: AnyPgColumn, action: AnyPgColumn): ForeignKeyBuilder =>
+  foreignKey({
+    name,
+    columns: [tenant, action],
+    foreignColumns: [actions.tenantId, actions.id],
   }).onDelete('set null');
 
 /** The things a company works with: contacts, companies, projects. */
@@ -97,7 +101,6 @@ export const entities = pgTable(
 /**
  * The episodic timeline: one row per thing that happened. Append-only; only
  * summary and summarized_at can be set, once (trigger in migration 0006).
- * `connection_id` and `caused_by_action_id` follow with connections and actions.
  */
 export const events = pgTable(
   'events',
@@ -112,10 +115,19 @@ export const events = pgTable(
     summary: text('summary'),
     summarizedAt: timestamp('summarized_at', { withTimezone: true }),
     payload: jsonb('payload').$type<EventPayload>().notNull(),
+    /** Null for events from the app itself. */
+    connectionId: uuid('connection_id'),
+    causedByActionId: uuid('caused_by_action_id'),
     createdAt: createdAt(),
   },
-  (t) => [
+  (t): PgTableExtraConfigValue[] => [
     unique('events_tenant_id_id_unique').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'events_connection_fk',
+      columns: [t.tenantId, t.connectionId],
+      foreignColumns: [connections.tenantId, connections.id],
+    }).onDelete('set null'),
+    actionRef('events_caused_by_action_fk', t.tenantId, t.causedByActionId),
     unique('events_tenant_source_external_id_unique').on(t.tenantId, t.source, t.externalId),
     check('events_source', inList(t.source, eventSources)),
     check('events_type', inList(t.type, eventTypes)),
@@ -151,6 +163,7 @@ export const entityIdentifiers = pgTable(
     }).onDelete('cascade'),
     eventRef('entity_identifiers_source_event_fk', t.tenantId, t.sourceEventId),
     memberRef('entity_identifiers_source_user_fk', t.tenantId, t.sourceUserId),
+    actionRef('entity_identifiers_source_action_fk', t.tenantId, t.sourceActionId),
     check('entity_identifiers_kind', inList(t.kind, identifierKinds)),
     sourceTypeCheck('entity_identifiers', t.sourceType),
     index('entity_identifiers_tenant_entity_idx').on(t.tenantId, t.entityId),
@@ -191,6 +204,7 @@ export const entityRelations = pgTable(
     memberRef('relations_confirmed_by_fk', t.tenantId, t.confirmedByUserId),
     eventRef('relations_source_event_fk', t.tenantId, t.sourceEventId),
     memberRef('relations_source_user_fk', t.tenantId, t.sourceUserId),
+    actionRef('relations_source_action_fk', t.tenantId, t.sourceActionId),
     check('relations_type', inList(t.type, relationTypes)),
     check('relations_status', inList(t.status, knowledgeStatuses)),
     sourceTypeCheck('relations', t.sourceType),
@@ -267,9 +281,7 @@ export const eventEntities = pgTable(
   ],
 ).enableRLS();
 
-/**
- * Something the user still has to do. `origin_card_id` follows with cards.
- */
+/** Something the user still has to do. */
 export const tasks = pgTable(
   'tasks',
   {
@@ -283,16 +295,24 @@ export const tasks = pgTable(
     createdBy: text('created_by', { enum: taskCreatedByValues }).notNull(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     completedByUserId: uuid('completed_by_user_id'),
+    /** The card it came from, when the user accepted a suggestion. */
+    originCardId: uuid('origin_card_id'),
     ...sourceColumns(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [
+  (t): PgTableExtraConfigValue[] => [
     unique('tasks_tenant_id_id_unique').on(t.tenantId, t.id),
     memberRef('tasks_assignee_fk', t.tenantId, t.assigneeUserId),
     memberRef('tasks_completed_by_fk', t.tenantId, t.completedByUserId),
+    foreignKey({
+      name: 'tasks_origin_card_fk',
+      columns: [t.tenantId, t.originCardId],
+      foreignColumns: [cards.tenantId, cards.id],
+    }).onDelete('set null'),
     eventRef('tasks_source_event_fk', t.tenantId, t.sourceEventId),
     memberRef('tasks_source_user_fk', t.tenantId, t.sourceUserId),
+    actionRef('tasks_source_action_fk', t.tenantId, t.sourceActionId),
     check('tasks_status', inList(t.status, taskStatuses)),
     check('tasks_created_by', inList(t.createdBy, taskCreatedByValues)),
     sourceTypeCheck('tasks', t.sourceType),

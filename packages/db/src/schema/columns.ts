@@ -1,7 +1,15 @@
 import { sourceTypes } from '@effectief/shared';
 import { type SQL, sql } from 'drizzle-orm';
-import { type AnyPgColumn, check, type PgColumn, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { organization } from './auth.ts';
+import {
+  type AnyPgColumn,
+  check,
+  foreignKey,
+  type PgColumn,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import { member, organization } from './auth.ts';
 import { currentTenantId } from './roles.ts';
 
 // Shared columns and constraints for tenant tables (docs/data-model.md §3, §4).
@@ -36,14 +44,23 @@ export const inList = (column: PgColumn, values: readonly string[]): SQL =>
 export const jsonbIs = (column: AnyPgColumn, type: 'object' | 'array'): SQL =>
   sql`jsonb_typeof(${column}) = ${sql.raw(`'${type}'`)}`;
 
+/** (tenant_id, user_id) → member, so only members of the tenant can be referenced. */
+export const memberRef = (name: string, tenant: AnyPgColumn, user: AnyPgColumn) =>
+  foreignKey({
+    name,
+    columns: [tenant, user],
+    foreignColumns: [member.organizationId, member.userId],
+  }).onDelete('set null');
+
 /**
  * Source columns for AI knowledge (docs/data-model.md §3.6). `source_chunk_id`
- * and `source_action_id` follow with document_chunks and actions.
+ * follows with document_chunks.
  */
 export const sourceColumns = () => ({
   sourceType: text('source_type', { enum: sourceTypes }).notNull(),
   sourceEventId: uuid('source_event_id'),
   sourceUserId: uuid('source_user_id'),
+  sourceActionId: uuid('source_action_id'),
   aiModel: text('ai_model'),
   aiTraceId: text('ai_trace_id'),
 });

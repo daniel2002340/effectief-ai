@@ -117,3 +117,13 @@ export const addEntityIdentifierInputSchema = z.strictObject({
   source: sourceRefSchema,
 });
 export type AddEntityIdentifierInput = z.input<typeof addEntityIdentifierInputSchema>;
+
+/** Who an entity is at a provider, e.g. Moneybird contact 123 (docs/data-model.md, principle 4). */
+export const addEntityExternalRefInputSchema = z.strictObject({
+  entityId: z.uuid(),
+  connectionId: z.uuid(),
+  /** The kind of object at the provider: `contact`, `customer`, … */
+  objectType: z.string().regex(/^[a-z][a-z_]{0,49}$/),
+  externalId: z.string().regex(/^[\w.:/#@-]{1,200}$/),
+});
+export type AddEntityExternalRefInput = z.input<typeof addEntityExternalRefInputSchema>;

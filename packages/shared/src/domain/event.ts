@@ -68,6 +68,10 @@ const eventBase = {
   externalId: z.string().min(1).max(1000),
   occurredAt: z.date(),
   threadKey: z.string().min(1).max(1000).nullish(),
+  /** The connection it came from; null for events from the app itself. */
+  connectionId: z.uuid().nullish(),
+  /** For `action.executed`: the action that caused it. */
+  causedByActionId: z.uuid().nullish(),
 };
 
 const eventOfType = <T extends EventType>(type: T) =>

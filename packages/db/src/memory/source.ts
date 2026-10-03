@@ -7,6 +7,7 @@ export function sourceColumnsOf(source: SourceRef) {
     sourceType: ref.sourceType,
     sourceEventId: ref.sourceType === 'event' ? ref.sourceEventId : null,
     sourceUserId: ref.sourceType === 'user' ? ref.sourceUserId : null,
+    sourceActionId: ref.sourceType === 'action' ? ref.sourceActionId : null,
     aiModel: ref.aiModel ?? null,
     aiTraceId: ref.aiTraceId ?? null,
   };

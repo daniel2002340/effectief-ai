@@ -50,6 +50,20 @@
       "when": 1791051790994,
       "tag": "0006_memory_rls_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791053402372,
+      "tag": "0007_feed_actions_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791053429593,
+      "tag": "0008_feed_rls_grants_triggers",
+      "breakpoints": true
     }
   ]
 }
