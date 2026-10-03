@@ -91,7 +91,7 @@ Format:
 
 ## #010 Typed API-contract met ts-rest
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** vervangen door #014
 - **Context:** In v1 kwamen veldnamen van API en UI niet overeen ("undefinedx"); dat bleek pas in productie.
 - **Beslissing:** ts-rest-contract met Zod in packages/shared, gebruikt door Fastify en door TanStack Query in web.
 - **Alternatieven:** tRPC (minder REST, lastiger voor webhooks en externe clients); OpenAPI genereren uit Zod (extra codegen-stap).
@@ -120,3 +120,42 @@ Format:
 - **Beslissing:** Handtekening checken op de ruwe body, webhook opslaan als uniek event, 200 teruggeven, verwerken in een job met retries; verwerking en effecten in één transactie.
 - **Alternatieven:** Synchroon verwerken in de request.
 - **Gevolgen:** Geldt voor Nango, Mollie en elke toekomstige webhookbron.
+
+## #014 Typed API-contract met oRPC in plaats van ts-rest
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** ts-rest kreeg sinds juni 2025 geen release meer en ondersteunt volgens zijn peer-dependencies alleen Fastify 4, React ≤18 en Zod 3; wij gebruiken Fastify 5, React 19 en Zod 4.
+- **Beslissing:** Contract-first met oRPC (`@orpc/contract` in packages/shared, OpenAPI-handler in api, client + TanStack Query in web). Elke procedure declareert `meta.auth`; de api controleert dat bij opstarten.
+- **Alternatieven:** ts-rest met peer-overrides (niet onderhouden, risico op breuk); alleen `@ts-rest/core` met eigen Fastify-koppeling (meer lijmcode op een stilstaande kern).
+- **Gevolgen:** Doel van #010 blijft: een mismatch tussen api en web faalt bij typecheck. Webhooks blijven gewone Fastify-routes.
+
+## #015 TypeScript 6 in plaats van 7
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** TypeScript 7 (native compiler) is uit, maar tooling die de JS-API van TypeScript gebruikt en editorondersteuning lopen nog achter.
+- **Beslissing:** TypeScript 6.0.3 via de pnpm-catalog, voor de hele workspace één versie.
+- **Alternatieven:** 7.0.x nu al (sneller, kans op tooling- en editorproblemen).
+- **Gevolgen:** Overstap naar 7 via Renovate zodra tsup, knip en de editor het ondersteunen.
+
+## #016 Interne packages zonder eigen build
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Een build-stap per package (`.d.ts`, dist) vertraagt typecheck en dev en kan uit sync raken.
+- **Beslissing:** packages/* exporteren hun `.ts`-bron direct. tsup bundelt ze mee in api en worker; Vite in web. Versies van gedeelde dependencies staan in de pnpm-catalog.
+- **Alternatieven:** Elk package apart bouwen met project references.
+- **Gevolgen:** Packages zijn alleen bruikbaar binnen deze workspace; publiceren vereist later een build.
+
+## #017 Database-driver: node-postgres met Drizzle 0.45
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** withTenant() zet de tenant per transactie met `set_config(..., true)`; dat vraagt een pool met echte transacties.
+- **Beslissing:** `pg` (node-postgres) als driver, drizzle-orm 0.45 (stabiel). Migraties via drizzle-kit; pgvector staat in migratie 0000.
+- **Alternatieven:** postgres.js (ook goed, minder gangbaar met drizzle-kit); Drizzle 1.0 (nog RC).
+- **Gevolgen:** Overstap naar Drizzle 1.0 zodra die stabiel is.
+
+## #018 Aparte databaserol zonder BYPASSRLS (uitgesteld)
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** RLS geldt niet voor superusers en tabeleigenaren. De lokale en CI-database draaien nu als superuser, dus RLS-policies zouden daar niets afdwingen.
+- **Beslissing:** Bij de eerste tabel met klantdata: een rol zonder BYPASSRLS en zonder eigendom van de tabellen (bijv. via `SET LOCAL ROLE` in withTenant() of een aparte login), plus `FORCE ROW LEVEL SECURITY`. Nu nog niet, want er zijn geen tabellen.
+- **Gevolgen:** De isolatietests van de eerste tabel moeten draaien onder die rol, anders bewijzen ze niets.

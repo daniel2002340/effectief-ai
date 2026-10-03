@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "stream",
+  "agentGuidance": false,
   "globalDependencies": [".nvmrc", "packages/config/tsconfig.base.json"],
   "tasks": {
     "build": {
