@@ -4,9 +4,10 @@ import { OpenAPIHandler } from '@orpc/openapi/fastify';
 import { type ORPCError, onError } from '@orpc/server';
 import type { FastifyInstance } from 'fastify';
 import { AppError, codeForStatus, errorBody } from '../errors.ts';
+import { toFetchHeaders } from '../http.ts';
 import { toErrorIssues } from '../issues.ts';
 import type { ApiContext } from './builders.ts';
-import { router } from './router.ts';
+import type { ApiRouter } from './router.ts';
 
 const API_PREFIX = '/api';
 
@@ -22,7 +23,10 @@ function isErrorResponse(body: unknown): body is ErrorResponse {
   return typeof body === 'object' && body !== null && 'error' in body;
 }
 
-export async function orpcRoutes(app: FastifyInstance): Promise<void> {
+export async function orpcRoutes(
+  app: FastifyInstance,
+  { router }: { router: ApiRouter },
+): Promise<void> {
   const handler = new OpenAPIHandler<ApiContext>(router, {
     customErrorResponseBodyEncoder: encodeError,
     rootInterceptors: [
@@ -45,7 +49,11 @@ export async function orpcRoutes(app: FastifyInstance): Promise<void> {
   app.all(`${API_PREFIX}/*`, { config: { auth: 'contract' } }, async (request, reply) => {
     const { matched } = await handler.handle(request, reply, {
       prefix: API_PREFIX,
-      context: { requestId: request.id, log: request.log },
+      context: {
+        requestId: request.id,
+        log: request.log,
+        headers: toFetchHeaders(request.headers),
+      },
     });
     if (!matched) throw new AppError('NOT_FOUND');
     return reply;

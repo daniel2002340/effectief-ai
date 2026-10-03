@@ -1,4 +1,4 @@
-import { databaseEnvSchema } from '@effectief/db';
+import { authDatabaseEnvSchema, databaseEnvSchema } from '@effectief/db';
 import { z } from 'zod';
 
 const ipOrCidr = z.union([z.ipv4(), z.ipv6(), z.cidrv4(), z.cidrv6()]);
@@ -27,14 +27,24 @@ export const trustProxySchema = z
     return addresses;
   });
 
-export const apiEnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
-  API_HOST: z.string().min(1),
-  API_PORT: z.coerce.number().int().min(1).max(65535),
-  API_TRUST_PROXY: trustProxySchema,
-  DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL,
-  REDIS_URL: z.url({ protocol: /^rediss?$/ }),
-});
+export const apiEnvSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']),
+    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+    API_HOST: z.string().min(1),
+    API_PORT: z.coerce.number().int().min(1).max(65535),
+    API_TRUST_PROXY: trustProxySchema,
+    DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL,
+    DATABASE_AUTH_URL: authDatabaseEnvSchema.shape.DATABASE_AUTH_URL,
+    /** Public origin of web and api (same origin, decision #021), e.g. https://app.effectief.ai. */
+    APP_ORIGIN: z.url({ protocol: /^https?$/ }).transform((url) => new URL(url).origin),
+    /** Signs session cookies. Generate with `openssl rand -base64 32`. */
+    BETTER_AUTH_SECRET: z.string().min(32),
+    REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+  })
+  .refine((env) => env.NODE_ENV !== 'production' || env.APP_ORIGIN.startsWith('https://'), {
+    message: 'APP_ORIGIN must use https in production (secure session cookies)',
+    path: ['APP_ORIGIN'],
+  });
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

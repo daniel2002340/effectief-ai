@@ -27,11 +27,15 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] Lognoise beperken: bij Valkey-uitval logt elke herverbinding een fout (`apps/api/src/main.ts`)
 - [ ] Web-bundle (553 kB) verkleinen, vooral Zod en de oRPC-client (`apps/web`)
 - [ ] Docker-images bouwen in CI (#025)
+- [ ] Twee varianten van drizzle-orm in de lockfile (met en zonder kysely-peer, via Better Auth); dedupliceren zodat de adapter dezelfde kopie gebruikt (#030)
+- [ ] Foutantwoorden van `/api/auth/*` hebben de vorm van Better Auth, niet onze `ErrorResponse` (#030, `apps/api/src/auth/routes.ts`)
 
 ## Later
 
 Bewust uitgesteld, met reden of beslissing erbij.
 
-- [ ] Strengere rate limits per route, o.a. voor login (#027)
+- [ ] Limiet per account naast per IP tegen credential stuffing, bijv. op e-mailadres (#027, #030)
+- [ ] E-mailverificatie, wachtwoord vergeten en uitnodigingen; wacht op een mailprovider (#030)
+- [ ] Passkeys (`@better-auth/passkey`) en 2FA (`twoFactor`) aanzetten (#030)
 - [ ] Overstap naar Drizzle 1.0 zodra die stabiel is (#017)
 - [ ] Overstap naar TypeScript 7 zodra tsup, knip en de editor het ondersteunen (#015)

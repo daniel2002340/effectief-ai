@@ -261,3 +261,11 @@ Format:
 - **Beslissing:** Migraties als eigenaar (`DATABASE_MIGRATION_URL`). Groepsrollen `app_runtime` en `auth_runtime` (NOLOGIN, migratie 0001); login-rollen met wachtwoord worden er lid van buiten migraties (`pnpm db:roles` voor dev en CI). Better Auth gebruikt `DATABASE_AUTH_URL` en mag alleen de auth-tabellen. De app (`DATABASE_URL`) heeft geen rechten op `user`, `session`, `account`, `verification` en `invitation`, en leest `organization` en `member` alleen voor de eigen tenant via RLS. Elke tenant-tabel: `tenantIsolation()`-policy, `FORCE ROW LEVEL SECURITY` en expliciete grants in de migratie, geen default privileges.
 - **Alternatieven:** Twee rollen met volledige app-rechten op de auth-tabellen (alleen met conventie af te dwingen).
 - **Gevolgen:** Drie database-URL's. Tests draaien als app- en auth-rol en falen als een runtime-rol superuser, BYPASSRLS of (via lidmaatschap) eigenaar is, of als een tabel met `tenant_id` geen geforceerde RLS heeft. In productie moeten de login-rollen bij de hosting worden aangemaakt.
+
+## #032 CSRF: wijzigingen alleen als JSON
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** #021 maakt `SameSite=Strict`-cookies mogelijk. Een tweede laag is nodig voor browsers of situaties waarin dat niet volstaat, ook voor oRPC, dat zelf geen origin-check heeft.
+- **Beslissing:** De plugin `jsonOnly` weigert elk verzoek behalve GET/HEAD/OPTIONS zonder `Content-Type: application/json` met 415, voor alle routes behalve `auth: 'hmac'` (webhooks). Browsers kunnen cross-site geen JSON sturen zonder CORS-preflight, en die staan we niet toe. De origin-check van Better Auth staat expliciet aan, ook in tests (Better Auth zet hem anders uit bij `NODE_ENV=test`).
+- **Alternatieven:** CSRF-tokens (extra state en client-code); alleen vertrouwen op SameSite.
+- **Gevolgen:** Schrijvende procedures zijn altijd POST met een JSON-body, ook zonder input (`{}`). GET-procedures mogen niets wijzigen.

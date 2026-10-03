@@ -35,20 +35,38 @@ describe('procedure builders', () => {
     secret: oc.route({ method: 'GET', path: '/secret' }).output(z.string()),
     open: oc.route({ method: 'GET', path: '/open' }).output(z.string()),
   };
-  const { procedure, publicProcedure, router } = createBuilders(testContract);
+  const sessions = new Map([['let-me-in', { userId: 'user-1', tenantId: 'tenant-1' }]]);
+  const { procedure, publicProcedure, router } = createBuilders(
+    testContract,
+    async (headers) => sessions.get(headers.get('cookie') ?? '') ?? null,
+  );
   const testRouter = router({
-    secret: procedure.secret.handler(() => 'secret'),
+    secret: procedure.secret.handler(({ context }) => `secret for ${context.session.tenantId}`),
     open: publicProcedure.open.handler(() => 'open'),
   });
-  const context = { requestId: 'test', log: pino({ level: 'silent' }) };
+  const context = (cookie?: string) => ({
+    requestId: 'test',
+    log: pino({ level: 'silent' }),
+    headers: new Headers(cookie ? { cookie } : {}),
+  });
 
   it('requires a session by default', async () => {
-    const error = await call(testRouter.secret, undefined, { context }).catch((e) => e);
-    expect(error).toBeInstanceOf(ORPCError);
-    expect((error as ORPCError<string, unknown>).code).toBe('UNAUTHORIZED');
+    for (const cookie of [undefined, 'not-a-session']) {
+      const error = await call(testRouter.secret, undefined, { context: context(cookie) }).catch(
+        (e) => e,
+      );
+      expect(error).toBeInstanceOf(ORPCError);
+      expect((error as ORPCError<string, unknown>).code).toBe('UNAUTHORIZED');
+    }
+  });
+
+  it('passes the session to the handler', async () => {
+    await expect(
+      call(testRouter.secret, undefined, { context: context('let-me-in') }),
+    ).resolves.toBe('secret for tenant-1');
   });
 
   it('lets publicProcedure through, also after combining into a router', async () => {
-    await expect(call(testRouter.open, undefined, { context })).resolves.toBe('open');
+    await expect(call(testRouter.open, undefined, { context: context() })).resolves.toBe('open');
   });
 });

@@ -23,6 +23,8 @@ env:
   API_HOST: 127.0.0.1
   API_PORT: 3000
   API_TRUST_PROXY: "false"
+  APP_ORIGIN: http://localhost:5180
+  BETTER_AUTH_SECRET: ci-test-only-not-a-real-secret-value
   VITE_API_BASE_PATH: /api
   WEB_DEV_API_TARGET: http://localhost:3000
 
