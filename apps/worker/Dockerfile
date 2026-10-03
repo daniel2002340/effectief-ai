@@ -8,13 +8,12 @@ COPY . .
 # Scripts are skipped: no git hooks in the image, and the build needs no postinstall.
 RUN pnpm install --frozen-lockfile --offline --ignore-scripts
 RUN pnpm --filter @effectief/worker build
+# Bundle plus production node_modules, the same way the CI smoke test does it (decision #028).
+RUN scripts/deploy-app.sh worker /out
 
-# Runtime: Node and one bundled file, no node_modules (decision #019).
 FROM node:24.21.0-alpine
 ENV NODE_ENV=production
 WORKDIR /app
-RUN echo '{"type":"module"}' > package.json
-COPY --from=build /repo/apps/worker/dist ./dist
+COPY --from=build /out ./
 USER node
-
 CMD ["node", "--enable-source-maps", "dist/main.js"]

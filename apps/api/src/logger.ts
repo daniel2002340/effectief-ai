@@ -4,7 +4,7 @@ import type { ApiEnv } from './env.ts';
 
 export function loggerOptions(
   env: Pick<ApiEnv, 'LOG_LEVEL'>,
-): NonNullable<FastifyServerOptions['logger']> {
+): Exclude<NonNullable<FastifyServerOptions['logger']>, boolean> {
   return {
     level: env.LOG_LEVEL,
     redact: { paths: redactPaths, censor: '[redacted]' },

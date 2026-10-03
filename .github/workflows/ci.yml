@@ -84,12 +84,27 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Startup smoke test (api)
+      # Runs the same artifacts as the Docker images: bundle plus `pnpm deploy` (decision #028).
+      - name: Assemble api and worker
         run: |
-          node apps/api/dist/main.js > api.log 2>&1 &
+          scripts/deploy-app.sh api "$RUNNER_TEMP/api"
+          scripts/deploy-app.sh worker "$RUNNER_TEMP/worker"
+
+      - name: Startup smoke test (api)
+        working-directory: ${{ runner.temp }}/api
+        run: |
+          node dist/main.js > api.log 2>&1 &
           if ! curl --silent --fail --retry 20 --retry-delay 1 --retry-all-errors \
             "http://127.0.0.1:${API_PORT}/health"; then
             cat api.log
+            exit 1
+          fi
+
+      - name: Startup smoke test (worker processes one job)
+        run: |
+          (cd "$RUNNER_TEMP/worker" && node dist/main.js > worker.log 2>&1 &)
+          if ! pnpm --filter @effectief/worker smoke:job; then
+            cat "$RUNNER_TEMP/worker/worker.log"
             exit 1
           fi
 

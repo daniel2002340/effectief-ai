@@ -3,12 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "node --watch --env-file-if-exists=../../.env src/main.ts",
     "build": "tsup",
-    "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "smoke:job": "node --env-file-if-exists=../../.env scripts/smoke-job.ts"
   },
   "dependencies": {
     "@effectief/shared": "workspace:*",

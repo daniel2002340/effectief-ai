@@ -1,9 +1,10 @@
 import { defineConfig } from 'tsup';
 
 /**
- * Bundles the worker into a single ESM artifact that runs with plain `node`,
- * without node_modules. Some dependencies are CommonJS and call require(),
- * hence the createRequire banner.
+ * Bundles our own code and the workspace packages (which ship TypeScript
+ * source) into one ESM file. npm dependencies stay external: some load files
+ * or worker threads from disk (pino transports, BullMQ). They are installed
+ * next to the bundle with `pnpm deploy --prod` (decision #028).
  */
 export default defineConfig({
   entry: ['src/main.ts'],
@@ -13,8 +14,7 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: true,
-  noExternal: [/.*/],
-  banner: {
-    js: "import { createRequire as __createRequire } from 'node:module'; const require = __createRequire(import.meta.url);",
-  },
+  noExternal: [/^@effectief\//],
+  // Every other bare import, including dependencies of workspace packages.
+  external: [/^[^./]/],
 });

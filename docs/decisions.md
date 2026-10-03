@@ -162,7 +162,7 @@ Format:
 
 ## #019 api en worker als één gebundeld artifact zonder node_modules
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** vervangen door #028
 - **Context:** Workspace-packages exporteren TypeScript-bron (#016) en hun dependencies (bijv. `pg`) zijn geen directe dependencies van de app; extern laten gaf runtime-fouten.
 - **Beslissing:** tsup bundelt alles (`noExternal: /.*/`) tot één ESM-bestand, met een `createRequire`-banner voor CommonJS-dependencies. Het image bevat alleen Node en `dist/`. In dev draait Node de TypeScript-bron direct (type stripping), zonder tsx.
 - **Alternatieven:** Third-party extern houden en `pnpm deploy --prod` in het image (groter image, dependencies dubbel declareren).
@@ -229,3 +229,11 @@ Format:
 - **Beslissing:** Globale limiet per IP in Valkey. `API_TRUST_PROXY` is verplicht en Zod-gevalideerd: `false`, een aantal hops, of een lijst proxy-IP's/CIDR's; `true` wordt geweigerd. `/health` (via `rateLimit: false` op de route) en webhookroutes (`auth: 'hmac'`) vallen buiten de limiet. Is Valkey onbereikbaar, dan blijft `/health` werken en worden gelimiteerde verzoeken geweigerd (500).
 - **Alternatieven:** Uitzonderingen op pad (`allowList`); niet gekozen, de uitzondering hoort bij de routedeclaratie.
 - **Gevolgen:** Bij hosting achter een proxy moet `API_TRUST_PROXY` precies de proxy beschrijven. Strengere limieten per route (login) later.
+
+## #028 Alleen eigen code bundelen; npm-dependencies via pnpm deploy
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** #019 bundelde alles. pino-transports en mogelijk BullMQ laden bestanden of threads van schijf, wat in een bundel stuk kan gaan.
+- **Beslissing:** tsup bundelt eigen code en workspace-packages (`noExternal: /^@effectief\//`); alle andere imports blijven extern. `scripts/deploy-app.sh` zet bundel en productie-`node_modules` samen met `pnpm deploy --prod` (vanuit de gedeelde lockfile, offline, `node-linker=hoisted`, `inject-workspace-packages` alleen voor die opdracht). Dockerfiles en CI gebruiken hetzelfde script. De CI-smoketest start de gebouwde api en laat de gebouwde worker één job verwerken.
+- **Alternatieven:** `pnpm deploy --legacy` (leest de lockfile niet, dus geen vaste versies); `inject-workspace-packages` voor de hele workspace (Node draait dan geen TS-bron meer in dev).
+- **Gevolgen:** De artifacts draaien niet direct vanuit `apps/*/dist` in de workspace, alleen na `deploy-app.sh`. Images zijn groter (api ±200 MB).

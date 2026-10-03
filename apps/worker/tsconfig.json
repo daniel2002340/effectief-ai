@@ -1,4 +1,4 @@
 {
   "extends": "@effectief/config/tsconfig.node.json",
-  "include": ["src", "*.ts"]
+  "include": ["src", "test", "scripts", "*.ts"]
 }

@@ -6,7 +6,10 @@
     "apps/web": {
       "entry": ["src/routes/**/*.tsx"]
     },
-    "packages/*": {}
+    "packages/*": {},
+    "apps/worker": {
+      "entry": ["scripts/*.ts"]
+    }
   },
   "ignoreIssues": {
     "apps/web/src/components/ui/**": ["exports", "types"]
