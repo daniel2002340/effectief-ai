@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { errorResponseSchema } from '@effectief/shared';
 import type { FastifyRequest } from 'fastify';
 import { describe, expect, it } from 'vitest';
-import { registerWebhookRoutes } from '../src/plugins/raw-body.ts';
+import { WEBHOOK_BODY_LIMIT_BYTES } from '../src/plugins/raw-body.ts';
 import { createTestApp } from './helpers.ts';
 
 const SIGNING_KEY = 'test-signing-key-not-a-secret';
@@ -49,11 +49,11 @@ describe('server refuses to start', () => {
 
   it('when an hmac route has no verify function', async () => {
     await expect(
-      createTestApp({}, (app) =>
-        registerWebhookRoutes(app, (scope) => {
+      createTestApp({
+        webhooks: async (scope) => {
           scope.post('/unsigned', { config: { auth: 'hmac' } }, async () => 'ok');
-        }),
-      ),
+        },
+      }),
     ).rejects.toThrow(/requires config.hmac.verify/);
   });
 
@@ -86,14 +86,14 @@ describe('auth types at runtime', () => {
 
   it('verifies hmac signatures on the exact raw body', async () => {
     let received: Buffer | undefined;
-    const app = await createTestApp({}, (instance) =>
-      registerWebhookRoutes(instance, (scope) => {
+    const app = await createTestApp({
+      webhooks: async (scope) => {
         scope.post('/test', { config: { auth: 'hmac', hmac: { verify } } }, async (request) => {
           received = request.body as Buffer;
           return { received: true };
         });
-      }),
-    );
+      },
+    });
     try {
       // Whitespace and key order matter for signatures; a re-serialised body would not match.
       const payload = '{ "b": 1,   "a": "é" }';
@@ -123,6 +123,42 @@ describe('auth types at runtime', () => {
         payload,
       });
       expect(unsigned.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('answers unknown webhook paths with 401, not 404', async () => {
+    const app = await createTestApp();
+    try {
+      for (const url of ['/webhooks', '/webhooks/', '/webhooks/unknown', '/webhooks/a/b']) {
+        const response = await app.inject({ method: 'POST', url, payload: '{}' });
+        expect(response.statusCode, url).toBe(401);
+        expect(errorResponseSchema.parse(response.json()).error.code).toBe('UNAUTHORIZED');
+      }
+      // Outside the scope a normal 404 remains.
+      expect((await app.inject({ method: 'GET', url: '/webhookz' })).statusCode).toBe(404);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('enforces its own body limit on webhooks', async () => {
+    const app = await createTestApp({
+      webhooks: async (scope) => {
+        scope.post('/big', { config: { auth: 'hmac', hmac: { verify } } }, async () => 'ok');
+      },
+    });
+    try {
+      const payload = Buffer.alloc(WEBHOOK_BODY_LIMIT_BYTES + 1, 'a');
+      const response = await app.inject({
+        method: 'POST',
+        url: '/webhooks/big',
+        headers: { 'content-type': 'application/octet-stream', 'x-signature': sign(payload) },
+        payload,
+      });
+      expect(response.statusCode).toBe(413);
+      expect(errorResponseSchema.parse(response.json()).error.code).toBe('PAYLOAD_TOO_LARGE');
     } finally {
       await app.close();
     }

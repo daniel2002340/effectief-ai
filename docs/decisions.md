@@ -139,7 +139,7 @@ Format:
 
 ## #016 Interne packages zonder eigen build
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** Een build-stap per package (`.d.ts`, dist) vertraagt typecheck en dev en kan uit sync raken.
 - **Beslissing:** packages/* exporteren hun `.ts`-bron direct. tsup bundelt ze mee in api en worker; Vite in web. Versies van gedeelde dependencies staan in de pnpm-catalog.
 - **Alternatieven:** Elk package apart bouwen met project references.
@@ -147,7 +147,7 @@ Format:
 
 ## #017 Database-driver: node-postgres met Drizzle 0.45
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** withTenant() zet de tenant per transactie met `set_config(..., true)`; dat vraagt een pool met echte transacties.
 - **Beslissing:** `pg` (node-postgres) als driver, drizzle-orm 0.45 (stabiel). Migraties via drizzle-kit; pgvector staat in migratie 0000.
 - **Alternatieven:** postgres.js (ook goed, minder gangbaar met drizzle-kit); Drizzle 1.0 (nog RC).
@@ -155,7 +155,7 @@ Format:
 
 ## #018 Aparte databaserol zonder BYPASSRLS (uitgesteld)
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** vervangen door #026
 - **Context:** RLS geldt niet voor superusers en tabeleigenaren. De lokale en CI-database draaien nu als superuser, dus RLS-policies zouden daar niets afdwingen.
 - **Beslissing:** Bij de eerste tabel met klantdata: een rol zonder BYPASSRLS en zonder eigendom van de tabellen (bijv. via `SET LOCAL ROLE` in withTenant() of een aparte login), plus `FORCE ROW LEVEL SECURITY`. Nu nog niet, want er zijn geen tabellen.
 - **Gevolgen:** De isolatietests van de eerste tabel moeten draaien onder die rol, anders bewijzen ze niets.
@@ -170,7 +170,7 @@ Format:
 
 ## #020 Webhooks alleen via registerWebhookRoutes()
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** Handtekeningen moeten op de exacte ontvangen bytes worden gecontroleerd (#013).
 - **Beslissing:** Eén eigen scope onder `/webhooks` waarin elke body een ruwe `Buffer` blijft; geen extra dependency. `auth: 'hmac'` vereist `config.hmac.verify` en is alleen binnen deze scope toegestaan; anders start de server niet. Handlers parsen de body zelf met Zod na de check.
 - **Alternatieven:** `fastify-raw-body` (extra dependency, bewaart body dubbel).
@@ -178,7 +178,7 @@ Format:
 
 ## #021 Web en api op dezelfde origin, geen CORS
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** De CORS-plugin registreert een eigen `OPTIONS *`-route zonder auth-type; bovendien maakt cross-origin sessiecookies lastiger.
 - **Beslissing:** Web roept de api relatief aan onder `/api` (`VITE_API_BASE_PATH`). In dev proxyt Vite naar de api; in productie routeert één reverse proxy `/api` en `/webhooks` naar de api en de rest naar web.
 - **Alternatieven:** Aparte api-domeinnaam met `@fastify/cors`.
@@ -186,7 +186,7 @@ Format:
 
 ## #022 Route-auth: type `contract` voor oRPC en sessies voorlopig dicht
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** Alle oRPC-procedures lopen via één Fastify-route; auth moet per procedure gelden.
 - **Beslissing:** Die ene route heeft `auth: 'contract'`; elke procedure declareert `meta.auth` (`session` of `public`), gecontroleerd bij opstarten en afgedwongen in middleware. `session` weigert alles (401) totdat er een sessiesysteem is.
 - **Gevolgen:** Het sessiesysteem vult de bestaande `session`-checks in; er komt geen nieuwe uitzonderingsroute.
@@ -200,7 +200,7 @@ Format:
 
 ## #024 shadcn/ui op Radix, met het `cn`-package van shadcn
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** shadcn/ui biedt nu Radix, Base UI en React Aria als basis, en levert `cn` als eigen package (vervangt clsx + tailwind-merge).
 - **Beslissing:** Radix als basis (stijl new-york, kleur neutral), componenten in `apps/web/src/components/ui`, `cn` via `@/lib/utils`. Gedeelde paginaonderdelen zoals `PageHeader` in `apps/web/src/components`.
 - **Alternatieven:** Base UI (nieuwer, minder ervaring mee).
@@ -208,8 +208,16 @@ Format:
 
 ## #025 CI en dependency-updates
 - **Datum:** 2026-10-03
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** v1 had geen CI; supply-chain-aanvallen via verse releases komen vaker voor.
 - **Beslissing:** Eén GitHub Actions-workflow met Postgres en Valkey als services: typecheck, Biome, knip, migraties + drift, tests, build, startup-smoketest, Playwright. gitleaks als binary met checksum (geen gitleaks-action, die vraagt een licentie voor organisaties). Renovate pint alles, wacht 3 dagen na een release, groepeert per ecosysteem en blijft op Node 24 en TypeScript 6.
 - **Alternatieven:** Dependabot (minder groeperings- en wachtopties).
 - **Gevolgen:** Renovate moet als GitHub-app op de repo worden geïnstalleerd. Docker-images worden in CI nog niet gebouwd.
+
+## #026 Aparte databaserol zonder BYPASSRLS, al in sessie 1
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** #018 stelde dit uit tot de eerste tabel. Zolang app en tests als superuser of tabeleigenaar draaien, dwingt RLS niets af en bewijzen isolatietests niets.
+- **Beslissing:** Migraties draaien als eigenaar; app en tests als een aparte rol zonder BYPASSRLS en zonder eigenaarschap. Elke tenant-tabel heeft `FORCE ROW LEVEL SECURITY`. Een test faalt als de app-rol eigenaar is of BYPASSRLS heeft. Sessie 1 (de eerste tabel) is pas klaar als dit allemaal staat.
+- **Alternatieven:** Uitstellen tot later (#018); te riskant, want dan bestaan er al tabellen en tests die onder de verkeerde rol groen zijn.
+- **Gevolgen:** Twee database-URL's (eigenaar voor migraties, app-rol voor runtime en tests), ook in CI en docker-compose.
