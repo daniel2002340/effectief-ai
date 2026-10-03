@@ -269,3 +269,74 @@ Format:
 - **Beslissing:** De plugin `jsonOnly` weigert elk verzoek behalve GET/HEAD/OPTIONS zonder `Content-Type: application/json` met 415, voor alle routes behalve `auth: 'hmac'` (webhooks). Browsers kunnen cross-site geen JSON sturen zonder CORS-preflight, en die staan we niet toe. De origin-check van Better Auth staat expliciet aan, ook in tests (Better Auth zet hem anders uit bij `NODE_ENV=test`).
 - **Alternatieven:** CSRF-tokens (extra state en client-code); alleen vertrouwen op SameSite.
 - **Gevolgen:** Schrijvende procedures zijn altijd POST met een JSON-body, ook zonder input (`{}`). GET-procedures mogen niets wijzigen.
+
+## #033 UUIDv7 als primaire sleutel en samengestelde tenant-FK's
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Het datamodel (docs/data-model.md) krijgt ±25 tenant-tabellen met veel onderlinge verwijzingen.
+- **Beslissing:** Nieuwe tabellen krijgen `id uuid default gen_uuid_v7()` (eigen functie in een migratie; PG17 heeft geen `uuidv7()`). Elke tenant-tabel heeft `unique (tenant_id, id)`; verwijzingen zijn `(tenant_id, x_id)`, met `on delete set null (x_id)` waar nodig. Gebruikersverwijzingen gaan naar `member(organization_id, user_id)`. Altijd `timestamptz`; `occurred_at` los van `created_at`.
+- **Alternatieven:** UUIDv4 (willekeurige index-inserts); ID's in de app genereren (ruwe SQL krijgt dan geen ID); enkelvoudige FK's (een bug kan rijen van verschillende tenants koppelen).
+- **Gevolgen:** Handgeschreven SQL in migraties voor `set null (kolom)`. Bij PG18 de functie vervangen door de ingebouwde.
+
+## #034 Koppeltabellen in plaats van uuid[]
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Events, kaarten, taken en documenten verwijzen naar meerdere entiteiten.
+- **Beslissing:** Koppeltabellen met `tenant_id` (`event_entities`, `card_events`, `card_entities`, `task_entities`, `document_entities`), samengestelde FK's en `on delete cascade`.
+- **Alternatieven:** `uuid[]`-kolommen: geen FK's, forgetEntity moet elke array bijwerken, geen rol per koppeling.
+- **Gevolgen:** Meer rijen en joins; forgetEntity is grotendeels cascade.
+
+## #035 Statusvelden als text met check-constraint
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Statussen en soorten zullen veranderen; Postgres-enums zijn lastig te wijzigen.
+- **Beslissing:** `text` + `check (… in (…))`. De waarden staan één keer als `as const`-array in packages/shared en voeden Zod, TypeScript en de check. Statusovergangen in code; voor `actions` ook een trigger.
+- **Alternatieven:** Postgres-enums (waarden niet te verwijderen of hernoemen, beperkt in transacties).
+- **Gevolgen:** Een nieuwe status is een migratie die de constraint vervangt.
+
+## #036 Embeddings in satelliettabellen per soort
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** HNSW vraagt een vaste dimensie; modelwissels moeten zonder downtime kunnen; forget moet embeddings meenemen.
+- **Beslissing:** `fact_embeddings`, `playbook_embeddings`, `chunk_embeddings` met PK `(eigenaar_id, model)`, kolommen `model` en `dimensions`, FK met cascade. Per actief model een partiële HNSW-expressie-index in een migratie. Zoeken met `hnsw.iterative_scan` en een expliciet `tenant_id`-filter.
+- **Alternatieven:** Vaste kolom per tabel (geen twee modellen naast elkaar); één generieke tabel (geen nette FK, grote gemengde index).
+- **Gevolgen:** Herembedden = backfill-job, evalset, omschakelen in models.ts, oude rijen verwijderen.
+
+## #037 Bron-inhoud apart met bewaartermijn
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Dataminimalisatie: mailtekst is alleen tijdelijk nodig; samenvatting en verwijzing blijven nuttig.
+- **Beslissing:** `events` is de append-only tijdlijn (samenvatting, metadata). Volledige inhoud staat in `event_contents` met `retain_until`. Een dagelijkse job (per tenant via `list_tenant_ids()`) verwijdert verlopen inhoud, oude action-inputs, verwerkte webhooks en oude gesloten kaarten, en logt aantallen in `audit_log`.
+- **Alternatieven:** Kolom op `events` die op `null` wordt gezet (UPDATE op een append-only tabel, grote rijen in de tijdlijn).
+- **Gevolgen:** Nieuwe instelling `tenant_settings.content_retention_days`.
+
+## #038 Webhook-inbox apart van events; tenant via SECURITY DEFINER-lookup
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** #013 en CLAUDE.md slaan een webhook op "als event". Een Nango-webhook ("sync klaar") is transport, geen gebeurtenis voor de tijdlijn. De ontvanger kent alleen een connectie-ID, en de app-rol mag niet over tenants heen zoeken.
+- **Beslissing:** Webhooks gaan eerst naar `webhook_deliveries` (uniek per bron en delivery-ID, retries, 30 dagen bewaard); de job maakt daarna `events`. De tenant komt uit `resolve_connection(provider, connection_id)`, een smalle `SECURITY DEFINER`-functie die alleen ID's teruggeeft. Ook `list_tenant_ids()` voor de retentie-job.
+- **Alternatieven:** Webhooks als event opslaan (vervuilt de tijdlijn en de bewaartermijnen); een tabel zonder RLS voor lookups.
+- **Gevolgen:** Voorstel om de webhookregel in CLAUDE.md aan te passen ("opslaan als `webhook_delivery`").
+
+## #039 Herleidbaarheid met getypte bronverwijzingen en onveranderlijke kennis
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Alles wat de AI weet moet een bron hebben, en kennis mag niet worden overschreven.
+- **Beslissing:** `source_type` plus getypte FK's (`source_event_id`, `source_chunk_id`, `source_user_id`, `source_action_id`) met `set null`, en `ai_model`/`ai_trace_id`. `facts`, `relations` en `playbooks` krijgen alleen UPDATE-rechten op status- en geldigheidskolommen; corrigeren is een nieuwe rij. `playbooks.examples` wordt de tabel `playbook_examples`; tellers vervallen (af te leiden uit `actions.playbook_id`).
+- **Alternatieven:** Eén `source_ref text` (geen FK, forget moet tekst doorzoeken); onveranderlijkheid alleen in code.
+- **Gevolgen:** Kolomrechten per tabel in de migratie, en een test die ze vergelijkt met docs/data-model.md.
+
+## #040 Persoonsgegevens: register per kolom en forget via cascade
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** Recht op vergetelheid moet door alle tabellen werken; logs mogen geen persoonsgegevens bevatten.
+- **Beslissing:** Register `packages/db/src/pii.ts` met per kolom klasse P/I/V/—; een test eist een klasse voor elke kolom van elke tenant-tabel. Persoonsgegevens worden hard verwijderd, nooit zacht. forgetEntity verwijdert gekoppelde kaarten, taken en events, en daarna de entiteit; de rest volgt via cascade. `audit_log` bevat alleen ID's, codes en aantallen (Zod staat geen vrije tekst toe), heeft geen FK's en blijft staan.
+- **Alternatieven:** `deleted_at` overal (houdt persoonsgegevens vast); markering via `COMMENT ON COLUMN` (lastiger te gebruiken voor log-redaction).
+- **Gevolgen:** Langfuse-traces krijgen event-ID's als metadata zodat ze mee verwijderd kunnen worden.
+
+## #041 docs/data-model.md beschrijft het schema
+- **Datum:** 2026-10-03
+- **Status:** geaccepteerd
+- **Context:** Het datamodel is groot en hangt samen; de Drizzle-code alleen laat de motivatie, rechten en retentie niet zien.
+- **Beslissing:** docs/data-model.md is de beschrijving van het schema. Elke schemawijziging werkt het bij in dezelfde PR.
+- **Gevolgen:** Opgenomen in CLAUDE.md (Structuur en Conventies).

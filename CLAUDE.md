@@ -36,6 +36,7 @@ packages/integrations  Adapter per provider + nango-integrations/
 packages/ai            Prompts, classifiers, models.ts (enige plek voor model-ID's)
 packages/config        Gedeelde tsconfig en Biome-config
 docs/decisions.md      Architectuurbeslissingen (zie hieronder)
+docs/data-model.md     Beschrijving van het schema: tabellen, rechten, retentie, gegevensstromen
 ```
 
 ## Commando's
@@ -116,7 +117,7 @@ Deze regels gelden altijd. Wijk er alleen van af als de gebruiker dat expliciet 
 - Code, identifiers en commits in het Engels. UI-teksten en gebruikersberichten in het Nederlands.
 - Bedragen in centen als integer, exclusief btw, met het btw-tarief apart. Nooit floats. Prijzen van EffectiefAI zelf komen uit één pricing-config.
 - Datums in UTC opslaan, tonen in Europe/Amsterdam.
-- **Database:** alleen via migraties (`db:generate` + `db:migrate`), nooit `drizzle-kit push` tegen een gedeelde database. Extensies en indexen (ook HNSW) staan in migraties. Embeddings slaan het model en de dimensie op.
+- **Database:** alleen via migraties (`db:generate` + `db:migrate`), nooit `drizzle-kit push` tegen een gedeelde database. Extensies en indexen (ook HNSW) staan in migraties. Embeddings slaan het model en de dimensie op. `docs/data-model.md` is de beschrijving van het schema; elke schemawijziging werkt dit document bij in dezelfde PR.
 - **Integraties:** een nieuwe integratie = een adapter in `packages/integrations/<provider>/` die een gedeelde interface implementeert. Lees eerst de scope- en productregels van de provider. Leg een echte payload vast als fixture en schrijf daar een test op, voordat je de parser bouwt.
 - **AI/RAG:** aparte `embedQuery` en `embedDocument`; reranking alleen voor volgorde, niet als drempel. Drempels en prompts hebben een evalset of regressie-fixtures; herijk bij elke modelwissel.
 - **Streaming (SSE):** typed error-event, heartbeat en afhandeling van disconnect.
