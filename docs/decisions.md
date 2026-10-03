@@ -197,3 +197,11 @@ Format:
 - **Context:** Meerdere api-instanties moeten dezelfde tellers delen.
 - **Beslissing:** `@fastify/rate-limit` met Valkey als store, globaal 300 verzoeken per minuut per IP, fail-closed als Valkey weg is.
 - **Gevolgen:** Achter een proxy moet `trustProxy` goed staan, anders delen alle gebruikers één IP. Strengere limieten per route (login, webhooks) later.
+
+## #024 shadcn/ui op Radix, met het `cn`-package van shadcn
+- **Datum:** 2026-10-03
+- **Status:** voorgesteld
+- **Context:** shadcn/ui biedt nu Radix, Base UI en React Aria als basis, en levert `cn` als eigen package (vervangt clsx + tailwind-merge).
+- **Beslissing:** Radix als basis (stijl new-york, kleur neutral), componenten in `apps/web/src/components/ui`, `cn` via `@/lib/utils`. Gedeelde paginaonderdelen zoals `PageHeader` in `apps/web/src/components`.
+- **Alternatieven:** Base UI (nieuwer, minder ervaring mee).
+- **Gevolgen:** Nieuwe componenten via `pnpm dlx shadcn add <naam>` in apps/web; pin daarna de versies.

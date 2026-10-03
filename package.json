@@ -16,7 +16,8 @@
     "knip": "knip",
     "db:generate": "pnpm --filter @effectief/db db:generate",
     "db:migrate": "pnpm --filter @effectief/db db:migrate",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "test:e2e": "turbo run test:e2e"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

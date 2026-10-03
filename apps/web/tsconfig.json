@@ -1,0 +1,10 @@
+{
+  "extends": "@effectief/config/tsconfig.react.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "e2e", "*.ts"]
+}
