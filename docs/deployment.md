@@ -2,9 +2,9 @@
 
 Hoe EffectiefAI draait op Railway, eerst als staging (`staging.effectiefai.nl`), later als productie in een eigen environment (bijv. `app.effectiefai.nl`).
 
-**Status:** ontwerp (sessie 3, PR 1). Nog niets gebouwd. Keuzes van Daniël: #054–#056; voorstellen: #057–#062.
+**Status:** gebouwd in sessie 3, nog niet uitgerold. Keuzes van Daniël: #054–#056; voorstellen: #057–#059, #061–#063.
 
-Uitgangspunt: **de app weet niet dat hij op Railway draait.** Alles wat Railway-specifiek is staat in `.railway/`, `.github/workflows/deploy-*.yml`, `scripts/deploy/` en de Dockerfiles. Overstappen naar een andere host is dan nieuwe infra-config, geen appwijziging (#054).
+Uitgangspunt: **de app weet niet dat hij op Railway draait.** Alles wat Railway-specifiek is staat in `.railway/` en `.github/workflows/deploy-staging.yml`; de Dockerfiles en pre-deploy-scripts zijn generiek. Overstappen naar een andere host is dan nieuwe infra-config, geen appwijziging (#054).
 
 ---
 
@@ -17,13 +17,13 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
 | Config-as-code | `railway.json`/`railway.toml` zijn **deprecated** en worden vanaf **2026-12-01 niet meer gelezen**. Nieuwe services kunnen er niet meer voor kiezen. Opvolger: Infrastructure as Code in `.railway/railway.ts` met `railway config plan` / `apply` ([IaC](https://docs.railway.com/infrastructure-as-code), [referentie](https://docs.railway.com/infrastructure-as-code/reference)). | Geen `railway.json`. We gebruiken `.railway/railway.ts` (#061). |
 | IaC-mogelijkheden | `service()` met `source: image(...)` of `github(...)`, `start`, `preDeploy`, `healthcheck`, `replicas`, `domains`, `env`, `volumeMounts`; `postgres()`, `redis()`, `volume()`; variabelen via `db.env.X`, `ctx.shared.X`, `preserve()`; `ctx.isEnvironment(name)`. Restart policy, TCP proxy en "wait for CI" staan niet in de referentie. Officiële GitHub Action: [`railwayapp/config`](https://github.com/railwayapp/config) (plan op PR, apply na merge). | Wat IaC niet dekt (restart policy, TCP proxy uit, PITR) is een handmatige stap in docs/todo.md. |
 | Dockerfile-builds | Builder `DOCKERFILE` met `dockerfilePath` ([config-as-code](https://docs.railway.com/reference/config-as-code)). Private networking is **niet beschikbaar tijdens de build** ([how it works](https://docs.railway.com/networking/private-networking/how-it-works)). | Migreren kan niet in de build; zie §2. |
-| Images uit een registry | Docker Hub, GHCR, Quay, GitLab. **Private images vereisen het Pro-plan**; voor GHCR een classic PAT ([services](https://docs.railway.com/guides/services)). Een nieuwe tag wordt gestaged en niet vanzelf uitgerold; programmatisch via de GraphQL-API (`serviceInstanceUpdate` + `serviceInstanceDeployV2`, daarna status pollen; [API](https://docs.railway.com/integrations/api), [forum](https://station.railway.com/questions/deploying-pre-built-images-from-git-hub-a-d4ac84bd)). GHCR-opslag en -verkeer zijn nu gratis ([GitHub](https://docs.github.com/en/billing/concepts/product-billing/github-packages)). | CI bouwt images, Railway rolt ze uit (#058). Pro-plan nodig. |
+| Images uit een registry | Docker Hub, GHCR, Quay, GitLab. **Private images vereisen het Pro-plan**; voor GHCR een classic PAT ([services](https://docs.railway.com/guides/services)). Een nieuwe tag wordt gestaged en niet vanzelf uitgerold; programmatisch via de GraphQL-API (`serviceInstanceUpdate` + `serviceInstanceDeployV2`, daarna status pollen; [API](https://docs.railway.com/integrations/api), [forum](https://station.railway.com/questions/deploying-pre-built-images-from-git-hub-a-d4ac84bd)). GHCR-opslag en -verkeer zijn nu gratis ([GitHub](https://docs.github.com/en/billing/concepts/product-billing/github-packages)). | CI bouwt images; één IaC-apply zet de nieuwe tag (#064). Pro-plan nodig. |
 | Pre-deploy command | Draait na de build en vóór de deploy, **in een aparte container met de env-variabelen van de service**, op het privénetwerk. Faalt hij, dan geen retry en gaat de deploy niet door ([pre-deploy](https://docs.railway.com/guides/pre-deploy-command)). | Niet op de api zetten (eigenaar-credentials zouden in de api-omgeving staan). Wel op een eigen migratieservice (§2). |
 | Private networking | DNS `<service>.railway.internal`. **Environments aangemaakt na 16-10-2025: IPv4 én IPv6**; oudere alleen IPv6. Services in verschillende environments kunnen elkaar niet bereiken. ioredis/BullMQ: `family: 0` voor dual stack ([library configuration](https://docs.railway.com/networking/private-networking/library-configuration)). | Nieuw staging-environment (dus dual stack); api luistert op `::`; zie §1.3. |
 | Environments | Variabelen en services zijn per environment; dupliceren kopieert services, variabelen en config. Project tokens gelden voor **één environment** (header `Project-Access-Token`) ([environments](https://docs.railway.com/guides/environments), [API](https://docs.railway.com/integrations/api)). | CI krijgt een token dat alleen staging kan raken. |
 | Wachten op CI | "Wait for CI" houdt een GitHub-autodeploy in `WAITING` tot alle workflows klaar zijn; Railway raadt zelf af om daar een migratie op te laten leunen ([autodeploys](https://docs.railway.com/deployments/github-autodeploys)). | Niet nodig: wij deployen alleen vanuit een workflow die pas start als CI groen is. |
 | Healthchecks | Alleen bij de start van een deploy, niet doorlopend; op `PORT`; vanaf host `healthcheck.railway.app`; standaard timeout 300 s ([healthchecks](https://docs.railway.com/reference/healthchecks)). | `PORT` expliciet zetten; doorlopende monitoring apart (Sentry). |
-| Postgres + pgvector | Standaardimage `postgres-ssl` heeft **geen pgvector**; Railway voegt geen extensies toe ([PostgreSQL](https://docs.railway.com/databases/postgresql)). `postgres-ssl` (Debian, PG 13–18) bevat pgBackRest voor PITR ([repo](https://github.com/railwayapp-templates/postgres-ssl)). De pgvector-templates van de community zijn PG 16/17 zonder PITR of PG 18 met PITR. | Eigen image: `postgres-ssl:17` + pgvector (#060). |
+| Postgres + pgvector | Volgens de docs heeft `postgres-ssl` **geen pgvector** ([PostgreSQL](https://docs.railway.com/databases/postgresql)). In de praktijk bevat `postgres-ssl:17` (build 2026-09-30) wel `postgresql-17-pgvector` 0.8.6, getest met `CREATE EXTENSION vector`. Het image bevat pgBackRest voor PITR ([repo](https://github.com/railwayapp-templates/postgres-ssl)). | Railway's standaard-Postgres op tag `17`, geen eigen image (#063, vervangt #060). |
 | Point-in-time recovery | Postgres single en HA. WAL-archief via pgBackRest naar een Railway-bucket; wekelijkse full, dagelijkse differential, ±4 weken venster; **telt pas vanaf de eerste base backup na aanzetten**. Restore maakt een **nieuwe service** naast de oude. CLI: `railway postgres pitr enable|status|restore` ([PITR](https://docs.railway.com/volumes/point-in-time-recovery), [backups](https://docs.railway.com/guides/postgres-backups-restores), [changelog](https://railway.com/changelog/2026-09-04-postgres-in-the-railway-cli)). Niet minor-versies pinnen. | PITR aanzetten vóór de eerste data (§7). |
 | Volume-backups | Dagelijks (6 dagen), wekelijks (27 dagen), maandelijks (89 dagen); incrementeel, tegen volumeprijs ([backups](https://docs.railway.com/reference/backups)). | Daily aan als tweede laag. |
 | Custom domains | Via `domains: [...]` in IaC of het dashboard; Railway regelt TLS. | Alleen de edge krijgt een domein. |
@@ -50,8 +50,8 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
         └──┬──────────┬───┘     └──┬────────┬──┘
            │          └────────────┼──┐     │
         ┌──▼──────────────┐     ┌──▼──▼─────▼──┐
-        │ postgres (17 +  │     │ valkey       │
-        │ pgvector, PITR) │     │ (AOF, volume)│
+        │ postgres (17 +  │     │ redis        │
+        │ pgvector, PITR) │     │ (Railway)    │
         └──▲──────────────┘     └──────────────┘
            │ alleen tijdens een deploy
         ┌──┴──────────────┐
@@ -61,12 +61,12 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
 
 | Service | Bron | Publiek | Replica's | Volume |
 |---|---|---|---|---|
-| `edge` | image `ghcr.io/<owner>/effectief-edge:<sha>` | ja, `staging.effectiefai.nl` | 1 | – |
+| `edge` | image `ghcr.io/daniel2002340/effectief-edge:<sha>` | ja, `staging.effectiefai.nl` | 1 | – |
 | `api` | image `effectief-api:<sha>` | nee | 1 | – |
 | `worker` | image `effectief-worker:<sha>` | nee | 1 | – |
 | `migrate` | image `effectief-migrate:<sha>` | nee | 1 (draait alleen bij deploy) | – |
-| `postgres` | image `effectief-postgres:17-<versie>` | nee, TCP proxy uit | 1 | ja |
-| `valkey` | image `valkey/valkey:8-alpine` (gepind) | nee | 1 | ja |
+| `postgres` | Railway's Postgres (`postgres-ssl:17`) | nee, TCP proxy uit | 1 | ja |
+| `redis` | Railway's Redis (`railwayapp/redis:8.2`) | nee | 1 | ja |
 
 Alle services in regio EU West (Amsterdam). Railway's automatische build (Railpack) gebruiken we niet: alle images komen uit onze eigen Dockerfiles (#012, #028) en worden in CI gebouwd (§3).
 
@@ -74,55 +74,13 @@ Alle services in regio EU West (Amsterdam). Railway's automatische build (Railpa
 
 Eén image met Caddy en de gebouwde web-app. Vervangt de nginx-stage in `apps/web/Dockerfile` (#057). Same-origin zoals in #021: de browser ziet alleen `staging.effectiefai.nl`.
 
-Schets van de Caddyfile (wordt gebouwd in de volgende PR):
+Config: `apps/web/Caddyfile`. Kort:
 
-```caddyfile
-{
-	admin off
-	auto_https off          # TLS eindigt bij Railway's edge
-	persist_config off
-}
-
-:{$PORT} {
-	header {
-		X-Robots-Tag "noindex, nofollow"
-		Strict-Transport-Security "max-age=31536000"
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Content-Security-Policy "default-src 'self'; connect-src 'self' https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
-		-Server
-	}
-
-	@backend path /api/* /webhooks /webhooks/* /health
-	handle @backend {
-		reverse_proxy {$API_UPSTREAM} {
-			# Eén waarde, door Railway's edge gezet; client-headers worden niet doorgegeven (§4.3).
-			header_up X-Forwarded-For {http.request.header.X-Real-IP}
-			header_up X-Forwarded-Proto https
-		}
-	}
-
-	handle /robots.txt {
-		respond "User-agent: *
-Disallow: /
-"
-	}
-
-	# Source maps staan niet in het image; dit is een tweede slot (§6).
-	handle *.map {
-		respond 404
-	}
-
-	handle {
-		root * /srv
-		@assets path /assets/*
-		header @assets Cache-Control "public, max-age=31536000, immutable"
-		header Cache-Control "no-cache"
-		try_files {path} /index.html
-		file_server
-	}
-}
-```
+- `/api/*`, `/webhooks/*` en `/health` gaan naar `{$API_UPSTREAM}`; Caddy zet `X-Forwarded-For` op alleen `X-Real-IP` van Railway (§4.3) en `X-Forwarded-Proto` op `https`.
+- Op elke response, ook die van de api (`header { defer … }`): `X-Robots-Tag: noindex, nofollow`, HSTS, `nosniff`, `Referrer-Policy`; `Server` en `Via` weg.
+- Op de app: een CSP (`script-src 'self'`, `connect-src 'self' https://*.ingest.de.sentry.io`, `frame-ancestors 'none'`; `style-src` met `'unsafe-inline'` voor de inline styles van Radix) en `X-Frame-Options: DENY`.
+- `/robots.txt` met `Disallow: /`; `*.map` geeft 404; `/assets/*` een jaar cachebaar, de rest `no-cache`; onbekende paden geven `index.html`.
+- Draait als `nobody`; admin-API, autosave en automatische HTTPS uit.
 
 Caddy vult `{$VAR}` in zonder fout als de variabele ontbreekt. Daarom controleert het entrypoint van het image eerst `PORT` en `API_UPSTREAM` (`: "${API_UPSTREAM:?}"`) en start anders niet, in lijn met "env valideren bij opstarten".
 
@@ -137,24 +95,18 @@ Caddy vult `{$VAR}` in zonder fout als de variabele ontbreekt. Daarom controleer
 - Het staging-environment wordt nieuw aangemaakt, dus `*.railway.internal` geeft IPv4 én IPv6.
 - **api luistert op `API_HOST=::`.** Op Linux accepteert een socket op `::` ook IPv4 (dual stack), dus dit werkt in nieuwe én oude (IPv6-only) environments. `0.0.0.0` zou in een IPv6-only environment onbereikbaar zijn.
 - Caddy luistert op `:{$PORT}` (alle adressen, beide families).
-- Uitgaande verbindingen: `pg` en ioredis gebruiken de DNS-resolver van Node en vinden beide families. Railway adviseert voor ioredis/BullMQ `family: 0`; dat zetten we generiek in de verbindingsopties (geen Railway-code, ook lokaal correct). Te verifiëren in de bouw-PR.
+- Uitgaande verbindingen: `pg` en ioredis gebruiken de DNS-resolver van Node en vinden beide families. Railway adviseert voor ioredis/BullMQ `family: 0`; dat staat generiek in de verbindingsopties van api en worker (geen Railway-code, ook lokaal correct).
 
 ### 1.4 Postgres
 
-- Eigen image `infra/postgres/Dockerfile`: `FROM ghcr.io/railwayapp-templates/postgres-ssl:17` plus het pgvector-pakket van PGDG voor PG 17 (gepinde versie, gelijk aan `pgvector/pgvector:pg17` in CI). Zo blijven SSL, pgBackRest en Railway's volume-conventies werken en hebben we pgvector (#060).
+- Railway's eigen Postgres-service, image `ghcr.io/railwayapp-templates/postgres-ssl:17`. Dat bevat pgvector (0.8.6) en pgBackRest, dus geen eigen image (#063). Verdwijnt pgvector ooit, dan faalt migratie 0000 bij de deploy en grijpen we terug op een eigen image (#060).
 - Major tag `17`, geen minor pin (PITR-eis).
 - Geen publieke TCP proxy. Controleren na aanmaken: Settings → Networking, en er mag geen `DATABASE_PUBLIC_URL` bestaan.
 - Database-rollen: zie §2.
 
-### 1.5 Valkey
+### 1.5 Redis
 
-Image `valkey/valkey:8-alpine` (zelfde major als dev en CI), gestart met:
-
-```
-valkey-server --requirepass "$VALKEY_PASSWORD" --appendonly yes --maxmemory-policy noeviction --dir /data
-```
-
-`noeviction` omdat BullMQ geen sleutels mag verliezen; AOF op een volume zodat jobs een herstart overleven. We kiezen dit boven Railway's Redis-template: dezelfde software en versie als dev en CI, en de instellingen staan in onze config.
+Railway's eigen Redis-database (`redis()` in IaC, image `railwayapp/redis:8.2`). Railway zet het wachtwoord en levert `REDIS_URL` met de privé-host. Redis staat standaard op `maxmemory-policy noeviction`, wat BullMQ nodig heeft. Eerder stond hier een eigen Valkey-service; die vroeg een start-command met `$VALKEY_PASSWORD`, en of Railway die via een shell uitvoert kon ik zonder account niet testen (#064). Dev en CI blijven op Valkey 8; BullMQ ondersteunt beide.
 
 ---
 
@@ -179,30 +131,33 @@ De eigenaar is de superuser van het image. Een aparte eigenaar-rol zonder superu
 - **Groepsrollen en alle rechten** staan al in migraties (0001 voor de rollen, grants en policies per tabel). Dat blijft zo.
 - **Login-rollen met wachtwoord** kunnen niet in een migratiebestand: dan staat het wachtwoord in git. Daarom doet de migratiestap het, met wachtwoorden uit Railway-variabelen (#059):
   1. `drizzle-orm`-migrator voert `packages/db/migrations` uit als eigenaar (zelfde journal en tabel `drizzle.__drizzle_migrations` als `drizzle-kit migrate`).
-  2. Login-rollen aanmaken of bijwerken (`CREATE`/`ALTER ROLE … LOGIN NOSUPERUSER NOBYPASSRLS … PASSWORD`, `GRANT app_runtime TO effectief_app`). Dit is de bestaande logica van `packages/db/scripts/create-login-roles.ts`, die nu nog weigert buiten `development`/`test`. Hij wordt een gedeelde functie die ook in productie mag draaien.
+  2. Login-rollen aanmaken of bijwerken (`CREATE`/`ALTER ROLE … LOGIN NOSUPERUSER NOBYPASSRLS … PASSWORD`, `GRANT app_runtime TO effectief_app`). De logica staat in `ensureLoginRoles()` (`packages/db/src/deploy/`); `pnpm db:roles` gebruikt dezelfde functie voor dev.
   3. Controle: geen login-rol is superuser, heeft BYPASSRLS, of is (via lidmaatschap) eigenaar van een tabel. Faalt de controle, dan faalt de deploy. Dezelfde regels als `packages/db/src/roles.test.ts`.
 - Wachtwoorden: `APP_DB_PASSWORD` en `AUTH_DB_PASSWORD` als gedeelde (shared) variabelen, `openssl rand -hex 32` (hex, dus geen URL-encoding nodig). Roteren = variabele wijzigen en opnieuw deployen; stap 2 zet het nieuwe wachtwoord.
 
 ### 2.3 Eigenaar-credentials niet in api of worker
 
-Een pre-deploy command op `api` zou draaien met de variabelen van `api`, dus dan zou `DATABASE_MIGRATION_URL` in de api-omgeving staan. Daarom een **aparte service `migrate`** (#058):
+Een pre-deploy command op `api` zou draaien met de variabelen van `api`, dus dan zou `DATABASE_MIGRATION_URL` in de api-omgeving staan. Daarom een **aparte service `migrate`** (`apps/migrate`, #058, #064):
 
 - Image `effectief-migrate:<sha>` met alleen de gebundelde migratiestap en `packages/db/migrations`.
-- **Pre-deploy command:** `node dist/migrate.js` (stap 1–3 hierboven). Faalt hij, dan gaat de deploy van `migrate` op `FAILED` en stopt de pipeline.
-- **Start command:** `node dist/done.js` (logt de toegepaste migratie en eindigt met 0); restart policy `NEVER`. Er draait dus geen container met eigenaar-credentials zodra de migratie klaar is.
+- **Pre-deploy command:** `node dist/main.js` (stap 1–3 hierboven). Faalt hij, dan gaat de deploy van `migrate` op `FAILED`, en api en worker blijven wachten tot ze opgeven (§2.4).
+- **Start command:** `node dist/status.js` (logt de toegepaste migratie en eindigt met 0); restart policy `NEVER`. Er draait dus geen container met eigenaar-credentials zodra de migratie klaar is.
 - Alleen `migrate` heeft `DATABASE_MIGRATION_URL=${{postgres.DATABASE_URL}}`. `api` en `worker` verwijzen nooit naar `postgres.DATABASE_URL`, `PGPASSWORD` of `PGUSER`; hun URL's worden opgebouwd uit `effectief_app`/`effectief_auth` en de gedeelde wachtwoorden (§4.1).
-- Test in de bouw-PR: een script (in CI tegen de IaC-definitie) faalt als `api`, `worker` of `edge` een variabele krijgt die naar `postgres.DATABASE_URL`, `postgres.PGPASSWORD` of `DATABASE_MIGRATION_URL` verwijst.
+- Test: `apps/migrate/test/railway-config.test.ts` voert `.railway/railway.ts` uit en faalt als een andere service dan `migrate` een variabele krijgt die naar de eigenaar-credentials van Postgres of `DATABASE_MIGRATION_URL` verwijst.
 
 ### 2.4 Volgorde: eerst migreren, dan deployen
 
-1. De deploy-workflow rolt `migrate` uit en **wacht tot de deploy `SUCCESS` is.** Dat kan alleen als het pre-deploy command met 0 eindigde, dus als alle migraties en de rolcontrole gelukt zijn.
-2. Pas daarna `api` en `worker`.
+De volgorde wordt afgedwongen door de pre-deploy commands, niet door de workflow (#064). Railway mag alle services tegelijk uitrollen:
 
-Tweede slot (voorstel): `api` en `worker` krijgen zelf een pre-deploy command `node dist/check-schema.js`. Dat leest **als app-rol** de laatste rij van `drizzle.__drizzle_migrations` en vergelijkt die met de laatste migratie in het journal waarmee het image gebouwd is (ingebakken bij de build). Klopt het niet, dan faalt de deploy. Zo kan ook een handmatige redeploy in het dashboard geen nieuwe code op een oud schema zetten. Vraagt één migratie: `GRANT USAGE ON SCHEMA drizzle` en `SELECT` op die tabel aan `app_runtime`.
+1. `migrate` voert in zijn pre-deploy de migraties uit.
+2. `api` en `worker` draaien in hun pre-deploy `node dist/check-schema.js`: **als app-rol** peilen ze elke 5 s of `drizzle.__drizzle_migrations` de nieuwste migratie uit hun build bevat (ingebakken bij de build, uit het journal). Pas dan start de nieuwe versie; tot die tijd draait de oude door. Na 15 minuten faalt de deploy. Daarvoor heeft `app_runtime` alleen `SELECT` op die tabel (migratie 0015).
+3. `edge` wacht in zijn pre-deploy (`edge-wait-for-api`) tot de api op het privénetwerk via `/health` dezelfde release meldt als de edge zelf. Zo komt een nieuwe web-app nooit live vóór de api waar hij bij hoort.
+
+Dit geldt ook voor een handmatige redeploy in het dashboard: nieuwe code start nooit op een schema zonder zijn migratie.
 
 ### 2.5 Migraties en de draaiende versie
 
-Tussen stap 1 en 2 draait de oude api op het nieuwe schema. Daarom: **migraties zijn achterwaarts compatibel met de vorige release** (expand/contract). Een kolom hernoemen of verwijderen gaat in twee releases: eerst toevoegen en beide schrijven, dan pas weghalen. Dit geldt ook voor terugdraaien (§3.3).
+Tussen het migreren en de start van de nieuwe api draait de oude api op het nieuwe schema. Daarom: **migraties zijn achterwaarts compatibel met de vorige release** (expand/contract). Een kolom hernoemen of verwijderen gaat in twee releases: eerst toevoegen en beide schrijven, dan pas weghalen. Dit geldt ook voor terugdraaien (§3.3).
 
 ---
 
@@ -221,30 +176,28 @@ Stappen:
 
 | # | Stap | Faalt → |
 |---|---|---|
-| 1 | Images bouwen en pushen naar GHCR: `effectief-{api,worker,migrate,edge}:<sha>`. `APP_RELEASE=<sha>` als build-arg. Source maps naar Sentry vanuit de build-stage (§6). | stop, niets veranderd |
-| 2 | `railway config plan --detailed-exit-code` tegen `.railway/railway.ts`. Is er structureel drift (iets anders dan image-tags), dan stoppen en melden; IaC-wijzigingen gaan via hun eigen PR en `railway config apply`. | stop |
-| 3 | `migrate` → image `<sha>`, deploy, wachten op `SUCCESS` (max. 10 min). | stop; oude api draait door op een schema dat compatibel is (§2.5) |
-| 4 | `api` en `worker` → image `<sha>`, tegelijk, wachten op `SUCCESS` (api: healthcheck `/health`). | stop; Railway houdt de vorige deploy draaiend als de healthcheck faalt |
-| 5 | `edge` → image `<sha>`, wachten op `SUCCESS` (healthcheck `/health`, dus via de api: test ook de routering). | stop; oude edge blijft |
-| 6 | Sentry-release afronden en de deploy aan `staging` koppelen. | waarschuwing |
+| 1 | Images bouwen en pushen naar GHCR: `effectief-{migrate,api,worker,edge}:<sha>`, met `APP_RELEASE=<sha>`. Source maps naar Sentry vanuit de build-stage (§6). Bestaat een image al (terugdraaien), dan wordt hij hergebruikt. | stop, niets veranderd |
+| 2 | `railway config plan`, daarna `railway config apply --yes` met `IMAGE_TAG=<sha>`. Zonder `--confirm-destructive`: een apply die iets zou verwijderen faalt. | stop |
+| 3 | Railway rolt uit; de pre-deploys zorgen voor migrate → api/worker → edge (§2.4). Faalt een stap, dan blijft de vorige versie van die service draaien. | zie Railway en Sentry |
+| 4 | Sentry: deploy van release `<sha>` op `staging` markeren. | workflow rood |
 
-Stap 3–5 gebruiken `scripts/deploy/railway-deploy.ts` (GraphQL: `serviceInstanceUpdate` met de nieuwe image, `serviceInstanceDeployV2`, daarna de deployment pollen tot `SUCCESS` of `FAILED`/`CRASHED`/`REMOVED`/`SKIPPED`). De precieze mutaties controleren we in de bouw-PR tegen de API-explorer; de CLI heeft (nog) geen "wacht op deze deploy"-commando.
+De workflow wacht niet tot Railway klaar is met uitrollen: de status staat in Railway (met e-mailmelding bij een mislukte deploy), fouten van de nieuwe versie in Sentry. Wachten in de workflow kan later via de GraphQL-API (docs/todo.md).
 
 Waarom niet Railway zelf laten bouwen vanuit GitHub: dan bouwt elke service los, zonder volgorde tussen migratie en api, en zouden source maps en de Sentry-token in Railway's build zitten. Nu bouwt CI één keer per commit, en is precies dat image wat er draait (en later naar productie kan).
 
 ### 3.2 Config-as-code
 
 - `.railway/railway.ts` beschrijft het project: services, bron (image), start- en pre-deploy commands, healthchecks, domein, volumes, variabelen (met referenties) en replica's per regio. Secrets staan er als `preserve()` in: de waarde blijft in Railway, de naam staat in git.
-- Verschillen tussen staging en productie via `ctx.isEnvironment('production')` (domein, replica's, allowlist).
-- Wijzigingen: PR → `railway config plan` als commentaar (officiële workflow `railwayapp/config`) → na merge `railway config apply --plan`. Productie wordt een tweede environment met dezelfde file en een eigen project token.
-- Wat IaC (nog) niet dekt, staat als handmatige stap in docs/todo.md: restart policy van `migrate`, TCP proxy uit, PITR aan, volume-backups, registry-credentials.
-- `railway` (npm-package voor de DSL) en de Railway CLI zijn alleen devDependencies van de deploy-tooling, niet van de apps.
+- Verschillen tussen staging en productie via `ctx.isEnvironment('production')` (domein, `SENTRY_ENVIRONMENT`).
+- De file legt ook de image-tag vast (`IMAGE_TAG`, verplicht, een volledige SHA), dus config en code worden samen uitgerold: de deploy-workflow doet plan en apply. Een plan als PR-commentaar komt later (docs/todo.md). Productie wordt een tweede environment met dezelfde file en een eigen project token.
+- Wat IaC (nog) niet dekt, staat als handmatige stap in docs/todo.md: TCP proxy van Postgres uit, PITR aan, volume-backups, registry-credentials, gedeelde variabelen.
+- `railway` (npm-package voor de DSL, 3.12.0) is een devDependency van de root en van `apps/migrate` (voor de test); de Railway CLI (5.63.1) installeert de workflow. Geen van beide komt in een image.
 
 ### 3.3 Terugdraaien
 
-- **Code terugzetten:** `workflow_dispatch` van `deploy-staging` met een eerdere `sha`. De images bestaan nog in GHCR; stap 3 (migrate) wordt overgeslagen (`skip_migrate: true` is de standaard bij handmatig). Alternatief bij haast: in het Railway-dashboard "Rollback" op `api`, `worker` en `edge` (Railway zet de vorige deploy terug met dezelfde image).
+- **Code terugzetten:** `workflow_dispatch` van `deploy-staging` met een eerdere `sha`. De images bestaan nog in GHCR, en `.railway/railway.ts` van die commit wordt toegepast. De migratiejob draait wel, maar doet niets: drizzle past alleen migraties toe die nieuwer zijn dan de laatste in de database. De schemacheck van de oude api slaagt, want zijn migratie zit erin. Alternatief bij haast: in het Railway-dashboard "Rollback" op `api`, `worker` en `edge` (Railway zet de vorige deploy terug met dezelfde image).
 - **Migraties gaan alleen vooruit.** Een gedraaide migratie wordt nooit teruggedraaid. Dankzij §2.5 werkt de vorige code op het nieuwe schema. Moet het schema terug, dan is dat een **nieuwe migratie** in een nieuwe PR, die gewoon door de flow gaat.
-- **Data stuk door een migratie** (bijv. een verkeerde `UPDATE`): PITR naar het moment vóór de deploy (§7). Het tijdstip staat in de Actions-log van stap 3.
+- **Data stuk door een migratie** (bijv. een verkeerde `UPDATE`): PITR naar het moment vóór de deploy (§7). Het tijdstip staat in de deploy-log van `migrate` in Railway.
 - Een rollback van `migrate` zelf is zinloos: drizzle slaat al toegepaste migraties over.
 
 ---
@@ -261,15 +214,10 @@ Railway-referenties: `${{service.VAR}}` en `${{shared.VAR}}`. "Secret" = sealed 
 |---|---|---|
 | `APP_DB_PASSWORD` | ja | `openssl rand -hex 32` |
 | `AUTH_DB_PASSWORD` | ja | `openssl rand -hex 32` |
-| `VALKEY_PASSWORD` | ja | `openssl rand -hex 32` |
 
 **postgres** — Railway's template-variabelen (`PGUSER`, `PGPASSWORD`, `PGDATABASE`, `DATABASE_URL`, …) plus de PITR-variabelen die Railway zet bij "Enable PITR". Geen eigen variabelen.
 
-**valkey**
-
-| Variabele | Secret | Waarde |
-|---|---|---|
-| `VALKEY_PASSWORD` | ja | `${{shared.VALKEY_PASSWORD}}` |
+**redis** — Railway's template-variabelen (`REDIS_PASSWORD`, `REDIS_URL`, …). Geen eigen variabelen.
 
 **migrate**
 
@@ -293,7 +241,7 @@ Railway-referenties: `${{service.VAR}}` en `${{shared.VAR}}`. "Secret" = sealed 
 | `APP_ORIGIN` | nee | `https://staging.effectiefai.nl` |
 | `DATABASE_URL` | ja | als bij migrate |
 | `DATABASE_AUTH_URL` | ja | als bij migrate |
-| `REDIS_URL` | ja | `redis://default:${{shared.VALKEY_PASSWORD}}@${{valkey.RAILWAY_PRIVATE_DOMAIN}}:6379` |
+| `REDIS_URL` | ja | `${{redis.REDIS_URL}}` (privé-host) |
 | `BETTER_AUTH_SECRET` | ja | `openssl rand -base64 32` |
 | `AUTH_SIGNUP_ALLOWLIST` | nee | nieuw (§5.1) |
 | `SENTRY_DSN` | nee* | nieuw; DSN van project `api` |
@@ -320,7 +268,7 @@ Railway-referenties: `${{service.VAR}}` en `${{shared.VAR}}`. "Secret" = sealed 
 
 \* Een DSN is geen geheim (de web-DSN staat in de bundle), maar we zetten hem niet in git.
 
-Gevolgen voor de code (bouw-PR): `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `APP_RELEASE` en `AUTH_SIGNUP_ALLOWLIST` komen in de Zod-schema's en in `.env.example` en CI. Zonder fallback: lokaal expliciet `SENTRY_DSN=disabled`. De web-image is per environment (de `VITE_*`-waarden zitten in de bundle); api-, worker- en migrate-images zijn hetzelfde voor staging en productie.
+`SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `APP_RELEASE` en `AUTH_SIGNUP_ALLOWLIST` staan in de Zod-schema's, in `.env.example` en in CI. Zonder fallback: lokaal expliciet `SENTRY_DSN=disabled`. De web-image is per environment (de `VITE_*`-waarden zitten in de bundle); api-, worker- en migrate-images zijn hetzelfde voor staging en productie.
 
 ### 4.2 Secrets buiten Railway
 
@@ -374,7 +322,7 @@ Ik lees "alleen /health en /webhooks zonder login" als: geen andere API-route zo
 Vanaf sessie 4 komt er echte mail binnen. Staging volgt daarom alle productieregels:
 
 - Secrets sealed; geen gedeelde of gekopieerde waarden tussen environments (eigen `BETTER_AUTH_SECRET`, eigen wachtwoorden).
-- Database en Valkey niet publiek; PITR en backups aan.
+- Database en Redis niet publiek; PITR en backups aan.
 - Railway-workspace: 2FA verplicht voor iedereen; alleen Daniël als lid. Railway's "Restricted Environments" (changelog 2025-11-28) bekijken voor productie.
 - Logs: pino-redaction geldt hier ook; Railway bewaart logs, dus er mag niets in staan wat niet in onze eigen logs mag.
 - Sentry zonder persoonsgegevens (§6).
@@ -411,7 +359,7 @@ Nieuwe dependencies: `@sentry/node` en `@sentry/react` 10.75.3, en `@sentry/cli`
 - Postgres-fouten bevatten in `detail` soms waarden (`Key (email)=(…) already exists`): `detail`, `where` en parameters worden geschrapt.
 - `user` alleen als `{ id }`; `tenantId` als tag. Geen e-mail, naam of IP.
 - In Sentry (server-side): Data Scrubber aan, "Prevent Storing of IP Addresses" aan, scrub-velden aangevuld met onze sleutels.
-- Test in de bouw-PR: een fout met een e-mailadres in body, header en `detail` → het event dat naar de transport gaat bevat geen van die waarden.
+- Test (`packages/shared/src/monitoring.test.ts`): een event met een e-mailadres en naam in body, headers, cookies, gebruiker, `detail`, breadcrumbs en context bevat na `scrubEvent` geen van die waarden meer; ID's, codes en paden blijven staan.
 
 ---
 
@@ -422,7 +370,7 @@ Nieuwe dependencies: `@sentry/node` en `@sentry/react` 10.75.3, en `@sentry/cli`
 - **PITR aan bij het aanmaken, vóór de eerste migratie.** Het venster begint pas bij de eerste base backup na aanzetten. Volgorde in docs/todo.md: Postgres aanmaken → PITR aan → `railway postgres pitr status` toont een base backup → pas dan de eerste deploy.
 - Bucket in een EU-regio; de regio van een bucket kan na aanmaken niet meer veranderen.
 - Daarnaast **dagelijkse volume-backup** (6 dagen): snel terugzetten op dezelfde service bij een kapot volume.
-- Valkey: AOF op een volume; geen back-up. Verloren jobs vangt de sweeper op (docs/todo.md, Code).
+- Redis: data op een volume; geen back-up. Verloren jobs vangt de sweeper op (docs/todo.md, Code).
 
 ### 7.2 Terugzetten
 
@@ -456,7 +404,7 @@ Schatting voor staging met weinig verkeer (gemiddeld gebruik, niet de limiet):
 | api | 200 MB | 0,02 vCPU | – | $2,40 |
 | worker | 200 MB | 0,02 vCPU | – | $2,40 |
 | postgres | 300 MB | 0,03 vCPU | 1 GB volume | $3,75 |
-| valkey | 30 MB | 0,01 vCPU | 0,5 GB volume | $0,60 |
+| redis | 30 MB | 0,01 vCPU | 0,5 GB volume | $0,60 |
 | migrate | alleen tijdens deploys | | | < $0,10 |
 | PITR-archief | | | ±5 GB bucket + upload | ±$0,35 |
 | volume-backups | | | incrementeel, < 1 GB | < $0,15 |
@@ -473,10 +421,10 @@ Schatting voor staging met weinig verkeer (gemiddeld gebruik, niet de limiet):
 
 ## 9. Open vragen
 
-1. Extra `basic_auth` op staging voor alles behalve `/health` en `/webhooks` (§5.3)? Mijn voorstel: nee, de app-login met allowlist is de afscherming, en basic auth stoort bij testen met pilotklanten.
-2. TLS naar Postgres op het privénetwerk: `sslmode=require` met het self-signed certificaat van `postgres-ssl` vraagt in node-postgres een eigen CA-instelling. Uitzoeken in de bouw-PR; tot dan zonder TLS binnen het privénetwerk.
-3. Kan "Enable PITR" in het dashboard een eigen image (§1.4) aanzetten, of moeten de archiefvariabelen met de hand? Testen bij het aanmaken.
-4. Kan IaC (`image()`) samengaan met image-tags die de deploy-workflow per commit zet, zonder dat `config plan` dat als drift ziet? Zo niet: image-bron in IaC als `preserve()`, of de tag ook in IaC laten bijwerken. Testen in de bouw-PR.
+1. Extra `basic_auth` op staging (§5.3)? **Gekozen: nee** (Daniël liet de keuze vrij): de app-login met allowlist is de afscherming, en basic auth stoort bij testen met pilotklanten.
+2. TLS naar Postgres op het privénetwerk: `sslmode=require` met het self-signed certificaat van `postgres-ssl` vraagt in node-postgres een eigen CA-instelling. **Gekozen:** voorlopig zonder TLS binnen het privénetwerk; uitzoeken vóór productie (docs/todo.md).
+3. ~~PITR op een eigen image~~: vervallen, we gebruiken Railway's eigen image (#063).
+4. ~~Image-tags naast IaC~~: opgelost, de tag staat in IaC zelf (`IMAGE_TAG`) en één apply rolt alles uit (#064). Nog niet gecontroleerd tegen een echt Railway-project: of `config apply` bij een nieuwe image-tag direct uitrolt, en of de CLI het project uit het project token haalt (docs/todo.md).
 
 ## 10. Bronnen
 

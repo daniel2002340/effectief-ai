@@ -26,7 +26,8 @@
         "AUTH_SIGNUP_ALLOWLIST",
         "SENTRY_DSN",
         "SENTRY_ENVIRONMENT",
-        "APP_RELEASE"
+        "APP_RELEASE",
+        "IMAGE_TAG"
       ]
     },
     "test:e2e": {

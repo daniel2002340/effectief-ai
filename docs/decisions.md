@@ -469,7 +469,7 @@ Format:
 
 ## #058 Deploy: images uit CI, migratieservice, vaste volgorde
 - **Datum:** 2026-10-04
-- **Status:** voorgesteld
+- **Status:** vervangen door #064
 - **Context:** Een pre-deploy command op de api deelt de variabelen van de api, dus de eigenaar-credentials zouden daar staan. Railway's GitHub-builds kennen geen volgorde tussen services.
 - **Beslissing:** `deploy-staging.yml` start na een groene CI-run op main en bouwt `effectief-{api,worker,migrate,edge}:<sha>` naar GHCR. Daarna via de Railway-API: `migrate` (pre-deploy draait de migraties, alleen deze service heeft `DATABASE_MIGRATION_URL`, restart `NEVER`) → wachten op `SUCCESS` → `api` + `worker` → `edge`. api en worker controleren in een eigen pre-deploy als app-rol dat het schema bij hun image past. Migraties zijn achterwaarts compatibel met de vorige release; terugdraaien = oude SHA zonder migrate, of een nieuwe migratie.
 - **Alternatieven:** Railway bouwt uit GitHub met Wait for CI (geen volgorde, Sentry-token in Railway); migratie in de start-command van de api (eigenaar-credentials in de api).
@@ -485,7 +485,7 @@ Format:
 
 ## #060 Postgres-image: Railway's postgres-ssl:17 plus pgvector
 - **Datum:** 2026-10-04
-- **Status:** voorgesteld
+- **Status:** vervangen door #063
 - **Context:** Railway's standaard-Postgres heeft geen pgvector; PITR werkt via pgBackRest in `postgres-ssl`; de pgvector-templates hebben PG 16/17 zonder PITR of PG 18.
 - **Beslissing:** `infra/postgres/Dockerfile`: `FROM ghcr.io/railwayapp-templates/postgres-ssl:17` plus het PGDG-pakket voor pgvector (zelfde versie als in CI). Major tag, geen minor pin (eis van PITR).
 - **Alternatieven:** pgvector-template van de community (geen PITR); PG 18-template (wijkt af van dev en CI op PG 17).
@@ -506,3 +506,19 @@ Format:
 - **Beslissing:** Verplichte env-variabele `AUTH_SIGNUP_ALLOWLIST` (adressen, `@domein`, of expliciet `*`), afgedwongen in Better Auth `databaseHooks.user.create.before`, zodat ook uitnodigingen en OAuth later langs de check gaan. `X-Robots-Tag: noindex, nofollow` en `robots.txt` via Caddy, in elk environment. Zonder login alleen `/health`, `/webhooks` (HMAC), `/api/auth` en de statische shell.
 - **Alternatieven:** Alleen de sign-up-route blokkeren (andere routes die gebruikers maken lopen er omheen); basic auth op alles (open vraag in docs/deployment.md §9).
 - **Gevolgen:** Lokaal staat `AUTH_SIGNUP_ALLOWLIST=*` expliciet in `.env.example`.
+
+## #063 Postgres: Railway's postgres-ssl:17 zonder eigen image
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** #060 ging uit van de docs: geen pgvector in Railway's Postgres. Het image `ghcr.io/railwayapp-templates/postgres-ssl:17` (build 2026-09-30, Debian trixie, PG 17.11) bevat inmiddels `postgresql-17-pgvector` 0.8.6; `CREATE EXTENSION vector` werkt.
+- **Beslissing:** Railway's eigen Postgres-service op tag `17`, geen eigen image. PITR werkt daarop zoals gedocumenteerd.
+- **Alternatieven:** eigen image (#060): eigen onderhoud, en onzeker of "Enable PITR" er goed mee omgaat.
+- **Gevolgen:** Haalt Railway pgvector ooit weg, dan faalt migratie 0000 bij de deploy (luid, niet stil); dan alsnog #060. CI draait pgvector 0.8.7, staging 0.8.6; verschil is een patch-release.
+
+## #064 Deploy: één IaC-apply, volgorde via pre-deploys
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** #058 liet de workflow per service uitrollen via de Railway-API. Dat botst met een IaC-file die de image vastlegt, en die API-mutaties zijn zonder account niet te testen.
+- **Beslissing:** Na groene CI op main bouwt `deploy-staging.yml` de images (`:<sha>`) en doet één `railway config apply` met `IMAGE_TAG=<sha>`. De volgorde komt uit de pre-deploys: `migrate` migreert; api en worker wachten als app-rol tot hun nieuwste migratie in de database staat (max. 15 min); de edge wacht tot `/health` van de api zijn release meldt. Alleen `migrate` heeft eigenaar-credentials (test op `.railway/railway.ts`). Railway's Redis in plaats van een eigen Valkey-service.
+- **Alternatieven:** per service uitrollen en pollen via GraphQL (#058; ongetest, en dubbel met IaC); alleen Wait for CI (geen volgorde).
+- **Gevolgen:** Ook een handmatige redeploy start nooit op een oud schema. `/health` geeft de release (git-SHA) terug. De workflow wacht niet op het einde van de uitrol; dat ziet Daniël in Railway en Sentry.
