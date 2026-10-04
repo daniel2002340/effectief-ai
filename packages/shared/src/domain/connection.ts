@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { actorSchema, auditContextSchema } from './audit.ts';
+import { actorSchema, auditContextSchema, connectionPurgeCountsSchema } from './audit.ts';
 import { connectionProviders, connectionStatuses, connectionStatusReasons } from './status.ts';
 
 // connections: a linked integration of a tenant, pointing to a Nango
@@ -30,6 +30,8 @@ export const transitionConnectionInputSchema = z.strictObject({
   from: z.enum(connectionStatuses),
   to: z.enum(connectionStatuses),
   reason: z.enum(connectionStatusReasons),
+  /** Only when purging: how much data was deleted, for the audit entry. */
+  deleted: connectionPurgeCountsSchema.optional(),
   actor: actorSchema,
   context: auditContextSchema.optional(),
 });

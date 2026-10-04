@@ -419,3 +419,19 @@ Format:
 - **Beslissing:** `ActionAdapter.execute({ type, input, connection, idempotencyKey, providerObjectId })` in `packages/integrations/src/adapter.ts`; met `providerObjectId` werkt hij bij, anders maakt hij aan. `AdapterError` heeft `code` en `retryable`. Tijdelijke fouten worden door BullMQ herhaald; bij de laatste poging of bij een definitieve fout volgt `failed` met de kaartsoort `action_failed` (FK `cards.action_id`, dedupe per actie). Bij `auth_expired` wordt de connectie `expired` met een kaart `connection_problem`. Nieuw: `failed → concept` (bewerken na een fout). Testhulpen via de subpaden `@effectief/integrations/testing` en `@effectief/db/testing`.
 - **Alternatieven:** De bestaande kaart van de actie heropenen (die kan al gesloten zijn, en een fout valt dan niet op); actie-ID in de payload (geen FK, blijft hangen na forget).
 - **Gevolgen:** De worker draait zonder echte adapters, dus een goedgekeurde actie faalt voorlopig als `unsupported`. Er is nog geen sweeper voor acties die blijven hangen in `approved` of `executing` (docs/todo.md).
+
+## #052 Datalevenscyclus: retentie, vergeten en ontkoppelen
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** PR 6 bouwt §6.3 en de retentie uit docs/data-model.md. Open vraag 3 (termijnen) en 5 (vrije tekst) zijn nog niet beantwoord.
+- **Beslissing:** Functies in `packages/db/src/lifecycle/` met jobs in de worker. Retentie: queue `retention` met een dagelijkse `sweep` (03:00 Amsterdam), de enige job zonder tenant; hij zet per tenant een job via `list_tenant_ids()` (SECURITY DEFINER, alleen ID's). Termijnen voorlopig 90 dagen (per tenant) / 180 dagen / 12 maanden, als constanten. forgetEntity verwijdert ook samengevoegde dubbelen (`merged_into_id`). `purgeConnection` verwijdert naast events, refs en documenten ook de kaarten (met acties) van de connectie, en entiteiten die alleen via haar bestonden. Audit alleen met aantallen.
+- **Alternatieven:** sweep die zelf alle tenants verwerkt (één lange job, geen isolatie per tenant); kaarten laten staan bij ontkoppelen (titels met persoonsgegevens, concepten op een dode connectie); restcontrole in vrije tekst nu al (vraagt een kaartsoort en een antwoord op open vraag 5).
+- **Gevolgen:** CLAUDE.md "queue-jobs bevatten de tenant" krijgt een uitzondering voor fan-out-jobs die alleen tenant-ID's lezen (voorstel). Procedures om forget en ontkoppelen te starten, de restcontrole en het intrekken bij Nango staan in docs/todo.md.
+
+## #053 Leesprocedures: samenvattingen, geen bron-inhoud; actie-input wel
+- **Datum:** 2026-10-04
+- **Status:** geaccepteerd
+- **Context:** `cards.list`, `cards.get` en `entities.get` zijn de eerste procedures die klantdata lezen.
+- **Beslissing:** De API geeft van events alleen type, bron, tijdstip en samenvatting, nooit `event_contents`. `cards.get` geeft de `input` van de acties mee, omdat de gebruiker moet zien wat hij goedkeurt. Een object van een andere tenant is `NOT_FOUND` (RLS), nooit `FORBIDDEN`. Tijdlijn per pagina met `before` (op `occurred_at`).
+- **Alternatieven:** input alleen via een aparte procedure (extra round-trip voor elke kaart); bron-inhoud meesturen (persoonsgegevens in elke response, ook na het verlopen van de termijn niet beheersbaar in caches).
+- **Gevolgen:** "Toon originele mail" wordt later een aparte procedure die de bron bij de provider ophaalt.

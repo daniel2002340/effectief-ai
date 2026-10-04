@@ -8,6 +8,7 @@ export * from './entity.ts';
 export * from './event.ts';
 export * from './fact.ts';
 export * from './insight.ts';
+export * from './lifecycle.ts';
 export * from './money.ts';
 export * from './playbook.ts';
 export * from './relation.ts';

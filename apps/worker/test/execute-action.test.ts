@@ -400,7 +400,7 @@ describe('execute-action queue (Valkey)', () => {
   });
 
   afterAll(async () => {
-    await Promise.all(workers.map((worker) => worker.close()));
+    await workers.close();
     await events.close();
     await queue.obliterate({ force: true });
     await queue.close();

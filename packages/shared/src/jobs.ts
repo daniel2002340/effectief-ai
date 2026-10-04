@@ -8,6 +8,9 @@ const tenantJobSchema = z.object({
 export const queueNames = {
   example: 'example',
   executeAction: 'execute-action',
+  retention: 'retention',
+  forgetEntity: 'forget-entity',
+  purgeConnection: 'purge-connection',
 } as const;
 
 export const exampleJobSchema = tenantJobSchema.extend({
@@ -30,6 +33,33 @@ export type ExecuteActionJob = z.infer<typeof executeActionJobSchema>;
  */
 export const executeActionJobId = (actionId: string, approvedAt: Date) =>
   `execute-${actionId}-${approvedAt.getTime()}`;
+
+/**
+ * Retention (#037) runs as two jobs in one queue. `sweep` is the one job
+ * without a tenant: it only lists tenant ids (list_tenant_ids()) and enqueues
+ * one `tenant` job per tenant, which does the work within withTenant().
+ */
+export const retentionJobNames = { sweep: 'sweep', tenant: 'tenant' } as const;
+export const retentionSweepJobSchema = z.strictObject({});
+export const retentionTenantJobSchema = tenantJobSchema;
+export type RetentionTenantJob = z.infer<typeof retentionTenantJobSchema>;
+
+/** One retention job per tenant per day, also when the sweep runs twice. */
+export const retentionTenantJobId = (tenantId: string, day: Date) =>
+  `retention-${tenantId}-${day.toISOString().slice(0, 10)}`;
+
+/** Forgetting a person on request of an owner (docs/data-model.md §6.3). */
+export const forgetEntityJobSchema = tenantJobSchema.extend({
+  entityId: z.uuid(),
+  requestedByUserId: z.uuid(),
+});
+export type ForgetEntityJob = z.infer<typeof forgetEntityJobSchema>;
+
+/** Deletes the data of a revoked connection and marks it purged. */
+export const purgeConnectionJobSchema = tenantJobSchema.extend({
+  connectionId: z.uuid(),
+});
+export type PurgeConnectionJob = z.infer<typeof purgeConnectionJobSchema>;
 
 /** Retries with backoff; failed jobs are kept so no failure disappears silently. */
 export const defaultJobOptions = {

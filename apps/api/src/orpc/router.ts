@@ -3,6 +3,8 @@ import { type CurrentTenant, contract, currentTenantSchema } from '@effectief/sh
 import { ORPCError } from '@orpc/server';
 import { actionHandlers, type EnqueueExecuteAction } from './actions.ts';
 import { createBuilders, type SessionResolver } from './builders.ts';
+import { cardHandlers } from './cards.ts';
+import { entityHandlers } from './entities.ts';
 
 export interface RouterDependencies {
   /** Connection as app_runtime; customer data only via withTenant(). */
@@ -29,6 +31,8 @@ async function readCurrentTenant(appDb: Database, tenantId: string): Promise<Cur
 export function createRouter({ appDb, resolveSession, enqueueExecuteAction }: RouterDependencies) {
   const { procedure, publicProcedure, router } = createBuilders(contract, resolveSession);
   const actions = actionHandlers({ appDb, enqueueExecuteAction });
+  const cards = cardHandlers({ appDb });
+  const entities = entityHandlers({ appDb });
 
   return router({
     system: {
@@ -56,6 +60,13 @@ export function createRouter({ appDb, resolveSession, enqueueExecuteAction }: Ro
       reject: procedure.actions.reject.handler(({ context, input }) =>
         actions.reject(context, input),
       ),
+    },
+    cards: {
+      list: procedure.cards.list.handler(({ context, input }) => cards.list(context, input)),
+      get: procedure.cards.get.handler(({ context, input }) => cards.get(context, input)),
+    },
+    entities: {
+      get: procedure.entities.get.handler(({ context, input }) => entities.get(context, input)),
     },
   });
 }

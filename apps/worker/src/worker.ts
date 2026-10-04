@@ -1,10 +1,13 @@
 import type { Database } from '@effectief/db';
 import type { AdapterRegistry } from '@effectief/integrations';
-import { queueNames } from '@effectief/shared';
-import { type ConnectionOptions, Worker } from 'bullmq';
+import { defaultJobOptions, queueNames, retentionJobNames } from '@effectief/shared';
+import { type ConnectionOptions, Queue, Worker } from 'bullmq';
 import type { Logger } from 'pino';
 import { processExampleJob } from './jobs/example.ts';
 import { processExecuteActionJob } from './jobs/execute-action.ts';
+import { processForgetEntityJob } from './jobs/forget-entity.ts';
+import { processPurgeConnectionJob } from './jobs/purge-connection.ts';
+import { processRetentionSweep, processRetentionTenantJob } from './jobs/retention.ts';
 
 export interface StartWorkersOptions {
   connection: ConnectionOptions;
@@ -17,14 +20,25 @@ export interface StartWorkersOptions {
   prefix?: string;
 }
 
+export interface StartedWorkers {
+  workers: Worker[];
+  /** The retention queue, which the sweep adds per-tenant jobs to. */
+  retentionQueue: Queue;
+  /** Waits for running jobs, then closes workers and queues. */
+  close: () => Promise<void>;
+}
+
 export function startWorkers({
   connection,
   log,
   db,
   adapters,
   prefix,
-}: StartWorkersOptions): Worker[] {
-  const options = { connection, concurrency: 5, ...(prefix ? { prefix } : {}) };
+}: StartWorkersOptions): StartedWorkers {
+  const prefixOption = prefix ? { prefix } : {};
+  const options = { connection, concurrency: 5, ...prefixOption };
+  const jobIdOf = (job: { id?: string | undefined; name: string; timestamp: number }) =>
+    job.id ?? `${job.name}-${job.timestamp}`;
   const example = new Worker(
     queueNames.example,
     (job) => processExampleJob(job.data, { jobId: job.id, log }),
@@ -36,7 +50,7 @@ export function startWorkers({
       processExecuteActionJob(
         job.data,
         {
-          jobId: job.id ?? `${job.name}-${job.timestamp}`,
+          jobId: jobIdOf(job),
           attemptsMade: job.attemptsMade,
           maxAttempts: job.opts.attempts ?? 1,
         },
@@ -44,7 +58,45 @@ export function startWorkers({
       ),
     options,
   );
-  const workers = [example, executeAction];
+  const retentionQueue = new Queue(queueNames.retention, {
+    connection,
+    defaultJobOptions,
+    ...prefixOption,
+  });
+  const retention = new Worker(
+    queueNames.retention,
+    (job) => {
+      if (job.name === retentionJobNames.sweep) {
+        return processRetentionSweep(job.data, {
+          db,
+          log,
+          enqueueTenants: async (jobs) => {
+            await retentionQueue.addBulk(
+              jobs.map(({ tenantId, jobId }) => ({
+                name: retentionJobNames.tenant,
+                data: { tenantId },
+                opts: { jobId },
+              })),
+            );
+          },
+        });
+      }
+      return processRetentionTenantJob(job.data, { jobId: jobIdOf(job) }, { db, log });
+    },
+    options,
+  );
+  // One at a time: forgetting and purging delete a lot in one transaction.
+  const forgetEntity = new Worker(
+    queueNames.forgetEntity,
+    (job) => processForgetEntityJob(job.data, { jobId: jobIdOf(job) }, { db, log }),
+    { ...options, concurrency: 1 },
+  );
+  const purgeConnection = new Worker(
+    queueNames.purgeConnection,
+    (job) => processPurgeConnectionJob(job.data, { jobId: jobIdOf(job) }, { db, log }),
+    { ...options, concurrency: 1 },
+  );
+  const workers = [example, executeAction, retention, forgetEntity, purgeConnection];
 
   for (const worker of workers) {
     worker.on('failed', (job, error) => {
@@ -56,5 +108,13 @@ export function startWorkers({
     worker.on('error', (error) => log.error({ queue: worker.name, err: error }, 'worker error'));
   }
 
-  return workers;
+  return {
+    workers,
+    retentionQueue,
+    close: async () => {
+      // close() waits for running jobs to finish.
+      await Promise.all(workers.map((worker) => worker.close()));
+      await retentionQueue.close();
+    },
+  };
 }

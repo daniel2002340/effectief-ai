@@ -39,7 +39,7 @@ describe('example queue (Valkey)', () => {
   const workers = startWorkers({ connection, log, prefix, db: database.db, adapters: {} });
 
   afterAll(async () => {
-    await Promise.all(workers.map((worker) => worker.close()));
+    await workers.close();
     await database.close();
     await events.close();
     await queue.obliterate({ force: true });

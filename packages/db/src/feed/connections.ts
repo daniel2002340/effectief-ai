@@ -52,9 +52,10 @@ export async function transitionConnection(
   tx: TenantTransaction,
   input: TransitionConnectionInput,
 ) {
-  const { connectionId, from, to, reason, actor, context } =
+  const { connectionId, from, to, reason, deleted, actor, context } =
     transitionConnectionInputSchema.parse(input);
   assertTransition('connections', connectionTransitions, from, to);
+  if (deleted && to !== 'purged') throw new Error('Deleted counts belong to purging only');
 
   const [connection] = await tx
     .update(connections)
@@ -84,7 +85,7 @@ export async function transitionConnection(
     objectId: connection.id,
     fromStatus: from,
     toStatus: to,
-    metadata: { provider: connection.provider, reason },
+    metadata: { provider: connection.provider, reason, ...(deleted ? { deleted } : {}) },
   });
   return connection;
 }
