@@ -1,6 +1,6 @@
 import { EnvValidationError, parseEnv } from '@effectief/shared';
 import { describe, expect, it } from 'vitest';
-import { apiEnvSchema } from '../src/env.ts';
+import { apiEnvSchema, isSignupAllowed } from '../src/env.ts';
 
 const validDatabases = {
   DATABASE_URL: 'postgres://app@localhost/db',
@@ -15,6 +15,7 @@ const valid = {
   API_TRUST_PROXY: 'false',
   APP_ORIGIN: 'http://localhost:5180',
   BETTER_AUTH_SECRET: 'x'.repeat(32),
+  AUTH_SIGNUP_ALLOWLIST: '*',
   ...validDatabases,
 };
 
@@ -46,5 +47,41 @@ describe('api env', () => {
     expect(() => parseEnv(apiEnvSchema, { ...valid, BETTER_AUTH_SECRET: 'kort' })).toThrow(
       /BETTER_AUTH_SECRET/,
     );
+  });
+
+  it('requires AUTH_SIGNUP_ALLOWLIST and accepts only addresses, @domains or *', () => {
+    const { AUTH_SIGNUP_ALLOWLIST: _, ...withoutAllowlist } = valid;
+    expect(() => parseEnv(apiEnvSchema, withoutAllowlist)).toThrow(/AUTH_SIGNUP_ALLOWLIST/);
+    expect(() => parseEnv(apiEnvSchema, { ...valid, AUTH_SIGNUP_ALLOWLIST: 'geen-adres' })).toThrow(
+      /AUTH_SIGNUP_ALLOWLIST/,
+    );
+    expect(() => parseEnv(apiEnvSchema, { ...valid, AUTH_SIGNUP_ALLOWLIST: 'a@b.nl,,' })).toThrow(
+      /AUTH_SIGNUP_ALLOWLIST/,
+    );
+  });
+
+  it('error messages do not echo allowlist entries', () => {
+    expect(() =>
+      parseEnv(apiEnvSchema, { ...valid, AUTH_SIGNUP_ALLOWLIST: 'jan@bedrijf.nl,fout' }),
+    ).toThrow(expect.objectContaining({ message: expect.not.stringContaining('jan@bedrijf.nl') }));
+  });
+});
+
+describe('isSignupAllowed', () => {
+  const parse = (value: string) =>
+    parseEnv(apiEnvSchema, { ...valid, AUTH_SIGNUP_ALLOWLIST: value }).AUTH_SIGNUP_ALLOWLIST;
+
+  it('* allows anyone', () => {
+    expect(isSignupAllowed(parse('*'), 'iemand@ergens.nl')).toBe(true);
+  });
+
+  it('matches exact addresses and whole domains, case-insensitively', () => {
+    const allowlist = parse(' Jan@Bedrijf.nl , @EffectiefAI.nl ');
+    expect(isSignupAllowed(allowlist, 'jan@bedrijf.nl')).toBe(true);
+    expect(isSignupAllowed(allowlist, 'JAN@BEDRIJF.NL ')).toBe(true);
+    expect(isSignupAllowed(allowlist, 'piet@effectiefai.nl')).toBe(true);
+    expect(isSignupAllowed(allowlist, 'piet@bedrijf.nl')).toBe(false);
+    expect(isSignupAllowed(allowlist, 'jan@sub.bedrijf.nl')).toBe(false);
+    expect(isSignupAllowed(allowlist, 'piet@nep-effectiefai.nl')).toBe(false);
   });
 });

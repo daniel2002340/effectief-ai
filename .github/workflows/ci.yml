@@ -25,6 +25,7 @@ env:
   API_TRUST_PROXY: "false"
   APP_ORIGIN: http://localhost:5180
   BETTER_AUTH_SECRET: ci-test-only-not-a-real-secret-value
+  AUTH_SIGNUP_ALLOWLIST: "*"
   VITE_API_BASE_PATH: /api
   WEB_DEV_API_TARGET: http://localhost:3000
 

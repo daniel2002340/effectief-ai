@@ -22,7 +22,8 @@
         "API_PORT",
         "API_TRUST_PROXY",
         "APP_ORIGIN",
-        "BETTER_AUTH_SECRET"
+        "BETTER_AUTH_SECRET",
+        "AUTH_SIGNUP_ALLOWLIST"
       ]
     },
     "test:e2e": {
