@@ -111,7 +111,8 @@ export default defineRailway((ctx) => {
   });
 
   return project('effectiefai', {
-    environments: ['staging'],
+    // Both exist in Railway; listing them keeps an apply from touching either one's existence.
+    environments: ['staging', 'production'],
     resources: [postgres, queue, migrate, api, worker, edge],
   });
 });
