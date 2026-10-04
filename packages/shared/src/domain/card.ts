@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import { actorSchema, auditContextSchema } from './audit.ts';
 import { centsSchema } from './money.ts';
-import { type CardKind, cardStatuses, connectionStatusReasons } from './status.ts';
+import {
+  actionErrorCodes,
+  type CardKind,
+  cardStatuses,
+  connectionStatusReasons,
+} from './status.ts';
 
 // cards.payload per kind. Structure for the UI, not a copy of the source:
 // IDs, amounts and enums. Free text (title, summary) has its own columns.
@@ -29,6 +34,8 @@ export const cardPayloadSchemas = {
   knowledge_review: z.strictObject({}),
   task_due: z.strictObject({}),
   insight: z.strictObject({}),
+  /** The failed action is cards.action_id. */
+  action_failed: z.strictObject({ errorCode: z.enum(actionErrorCodes) }),
 } satisfies Record<CardKind, z.ZodType>;
 
 export type CardPayload<K extends CardKind = CardKind> = z.infer<(typeof cardPayloadSchemas)[K]>;
@@ -58,6 +65,7 @@ export const createCardInputSchema = z.discriminatedUnion('kind', [
   cardOfKind('knowledge_review'),
   cardOfKind('task_due').extend({ taskId: z.uuid() }),
   cardOfKind('insight'),
+  cardOfKind('action_failed').extend({ actionId: z.uuid() }),
 ]);
 export type CreateCardInput = z.input<typeof createCardInputSchema>;
 

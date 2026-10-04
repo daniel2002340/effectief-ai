@@ -2,6 +2,7 @@ import {
   type ActionInput,
   type ActionResult,
   type AuditMetadata,
+  actionErrorCodes,
   actionStatuses,
   actionTypes,
   actorTypes,
@@ -133,6 +134,8 @@ export const cards = pgTable(
     dedupeKey: text('dedupe_key'),
     connectionId: uuid('connection_id'),
     taskId: uuid('task_id'),
+    /** For `action_failed`: the action that failed. */
+    actionId: uuid('action_id'),
     snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     resolvedByUserId: uuid('resolved_by_user_id'),
@@ -156,6 +159,12 @@ export const cards = pgTable(
       columns: [t.tenantId, t.taskId],
       foreignColumns: [tasks.tenantId, tasks.id],
     }).onDelete('cascade'),
+    // actions is declared below; the callback runs after both tables exist.
+    foreignKey({
+      name: 'cards_action_fk',
+      columns: [t.tenantId, t.actionId],
+      foreignColumns: [actions.tenantId, actions.id],
+    }).onDelete('cascade'),
     memberRef('cards_resolved_by_fk', t.tenantId, t.resolvedByUserId),
     check('cards_kind', inList(t.kind, cardKinds)),
     check('cards_status', inList(t.status, cardStatuses)),
@@ -171,6 +180,7 @@ export const cards = pgTable(
       sql`(${t.kind} = 'connection_problem') = (${t.connectionId} is not null)`,
     ),
     check('cards_task_due', sql`(${t.kind} = 'task_due') = (${t.taskId} is not null)`),
+    check('cards_action_failed', sql`(${t.kind} = 'action_failed') = (${t.actionId} is not null)`),
     index('cards_feed_idx').on(t.tenantId, t.status, t.priority.desc(), t.createdAt.desc()),
     tenantIsolation(t.tenantId),
   ],
@@ -230,7 +240,8 @@ export const cardEntities = pgTable(
  * A proposed write action on a card: proposeAction → approve → execute (#004).
  * The trigger actions_guard (migration 0008) enforces the transitions and that
  * input only changes in concept, proposed_input never and provider_object_id
- * never once set.
+ * never once set; actions_final_guard (0012) that a final type is not edited
+ * after executing.
  */
 export const actions = pgTable(
   'actions',
@@ -252,8 +263,11 @@ export const actions = pgTable(
     approvedByUserId: uuid('approved_by_user_id'),
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     executedAt: timestamp('executed_at', { withTimezone: true }),
+    /** Number of times an execute job claimed the action. */
     attempts: smallint('attempts').default(0).notNull(),
-    lastErrorCode: text('last_error_code'),
+    /** The job that claimed the action (`executing`); only it may finish it. */
+    executionJobId: text('execution_job_id'),
+    lastErrorCode: text('last_error_code', { enum: actionErrorCodes }),
     aiModel: text('ai_model'),
     aiTraceId: text('ai_trace_id'),
     createdAt: createdAt(),
@@ -300,6 +314,11 @@ export const actions = pgTable(
     ),
     check('actions_result_object', sql`${t.result} is null or ${jsonbIs(t.result, 'object')}`),
     check('actions_attempts', sql`${t.attempts} >= 0`),
+    check('actions_last_error_code', inList(t.lastErrorCode, actionErrorCodes)),
+    check(
+      'actions_executing_has_job',
+      sql`${t.status} <> 'executing' or ${t.executionJobId} is not null`,
+    ),
     index('actions_tenant_card_idx').on(t.tenantId, t.cardId),
     index('actions_tenant_status_idx').on(t.tenantId, t.status),
     index('actions_tenant_playbook_idx').on(t.tenantId, t.playbookId),

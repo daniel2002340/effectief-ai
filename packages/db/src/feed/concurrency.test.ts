@@ -100,21 +100,21 @@ describe('concurrent transitions', () => {
     expect(audit.filter((e) => e.action === 'action.approved')).toHaveLength(1);
   });
 
-  it('two executions of one approved action: one provider object is recorded', async () => {
+  it('two jobs claiming one approved action: exactly one owns it', async () => {
     const action = await actionIn('approved');
-    const execute = (providerObjectId: string) => (tx: TenantTransaction) =>
+    const claim = (jobId: string) => (tx: TenantTransaction) =>
       transitionAction(tx, {
         actionId: action.id,
         from: 'approved',
-        to: 'executed',
-        providerObjectId,
-        result: {},
+        to: 'executing',
+        jobId,
         actor: system,
       });
-    const results = await race([execute('draft-a'), execute('draft-b')]);
+    const results = await race([claim('job-a'), claim('job-b')]);
     expectOneWinner(results);
     const stored = await inTenant((tx) => getAction(tx, action.id));
     expect(stored?.attempts).toBe(1);
+    expect(['job-a', 'job-b']).toContain(stored?.executionJobId);
   });
 
   it('revoke versus expire of a connection', async () => {

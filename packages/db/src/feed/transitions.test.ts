@@ -123,8 +123,9 @@ describe('invalid transitions are refused', () => {
       const input = {
         approved: { to: 'approved', actor: user },
         rejected: { to: 'rejected', actor: user },
+        executing: { to: 'executing', jobId: 'job-x', actor: system },
         executed: { to: 'executed', providerObjectId: 'x', result: {}, actor: system },
-        failed: { to: 'failed', errorCode: 'x', actor: system },
+        failed: { to: 'failed', errorCode: 'unknown', actor: system },
         concept: { to: 'concept', actor: user },
       } as const;
       await expect(

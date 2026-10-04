@@ -279,6 +279,13 @@ describe('playbooks', () => {
           await transitionAction(tx, {
             actionId: action.id,
             from: 'approved',
+            to: 'executing',
+            jobId: `job-${action.id}`,
+            actor: { type: 'system' },
+          });
+          await transitionAction(tx, {
+            actionId: action.id,
+            from: 'executing',
             to: 'executed',
             providerObjectId: `draft-${action.id}`,
             result: { providerThreadId: 'thread-1' },

@@ -1,21 +1,22 @@
 import {
   type ActionType,
+  type Actor,
+  type AuditContext,
   actionAuditActions,
-  actionInputSchemas,
-  actionProviders,
-  actionResultSchemas,
+  actionRegistry,
   actionTransitions,
   type ProposeActionInput,
   proposeActionInputSchema,
   type TransitionActionInput,
   transitionActionInputSchema,
 } from '@effectief/shared';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { single } from '../memory/source.ts';
-import { actions } from '../schema/index.ts';
+import { actions, cards } from '../schema/index.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 import { writeAudit } from './audit.ts';
+import { transitionCard } from './cards.ts';
 import { getConnection } from './connections.ts';
 import { assertTransition, missedTransition, TransitionError } from './transition.ts';
 
@@ -44,7 +45,7 @@ export async function proposeAction(tx: TenantTransaction, input: ProposeActionI
   const { actor, context, cardId, connectionId, type, ordinal } = proposal;
 
   const connection = await getConnection(tx, connectionId);
-  const providers: readonly string[] = actionProviders[type];
+  const providers: readonly string[] = actionRegistry[type].providers;
   if (connection?.status !== 'active' || !providers.includes(connection.provider)) {
     throw new Error(`Connection ${connectionId} cannot execute ${type}`);
   }
@@ -115,23 +116,28 @@ export async function transitionAction(tx: TenantTransaction, input: TransitionA
           approvedAt: sql`now()`,
           ...(parsed.input === undefined
             ? {}
-            : { input: actionInputSchemas[type].parse(parsed.input) }),
+            : { input: actionRegistry[type].input.parse(parsed.input) }),
         };
       }
       case 'rejected':
         return {};
+      case 'executing':
+        return { executionJobId: parsed.jobId, attempts: sql`${actions.attempts} + 1` };
       case 'executed':
         return {
           providerObjectId: parsed.providerObjectId,
-          result: actionResultSchemas[type].parse(parsed.result),
+          result: actionRegistry[type].result.parse(parsed.result),
           executedAt: sql`now()`,
-          attempts: sql`${actions.attempts} + 1`,
           lastErrorCode: null,
         };
       case 'failed':
-        return { lastErrorCode: parsed.errorCode, attempts: sql`${actions.attempts} + 1` };
+        return { lastErrorCode: parsed.errorCode };
       case 'concept':
-        // Editing after execution needs a new approval.
+        // A sent mail cannot be changed; the trigger actions_final_guard agrees.
+        if (from === 'executed' && actionRegistry[type].afterExecute === 'final') {
+          throw new TransitionError('invalid_transition', 'actions', from, to);
+        }
+        // Editing needs a new approval.
         return { approvedByUserId: null, approvedAt: null };
     }
   })();
@@ -154,6 +160,7 @@ export async function transitionAction(tx: TenantTransaction, input: TransitionA
     metadata: {
       type,
       cardId: action.cardId,
+      ...(to === 'executing' ? { attempts: action.attempts } : {}),
       ...(to === 'executed' && action.providerObjectId
         ? { providerObjectId: action.providerObjectId, attempts: action.attempts }
         : {}),
@@ -163,6 +170,106 @@ export async function transitionAction(tx: TenantTransaction, input: TransitionA
     },
   });
   return action;
+}
+
+const approveSchema = z.strictObject({
+  actionId: z.uuid(),
+  input: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * A member approves: a concept (optionally with the edited input), or a failed
+ * action to retry it. Reads the current status and transitions from it; a
+ * concurrent approval makes one of the two throw `status_changed`. That the
+ * user is a member of this tenant is enforced by the foreign key on
+ * (tenant_id, approved_by_user_id); the API takes the user from the session.
+ * Retrying resolves the card that reported the failure.
+ */
+export async function approveAction(
+  tx: TenantTransaction,
+  input: z.input<typeof approveSchema> & {
+    actor: Extract<Actor, { type: 'user' }>;
+    context?: AuditContext;
+  },
+) {
+  const { actionId, input: edited } = approveSchema.parse({
+    actionId: input.actionId,
+    input: input.input,
+  });
+  const { actor, context } = input;
+  const current = await getAction(tx, actionId);
+  if (!current) throw new TransitionError('not_found', 'actions', 'concept', 'approved');
+  const from = current.status === 'failed' ? 'failed' : 'concept';
+  const action = await transitionAction(tx, {
+    actionId,
+    from,
+    to: 'approved',
+    input: edited,
+    actor,
+    context,
+  });
+  if (from === 'failed') await resolveFailureCards(tx, actionId, actor, context);
+  return action;
+}
+
+/** A member rejects a concept; nothing is executed. */
+export async function rejectAction(
+  tx: TenantTransaction,
+  input: { actionId: string; actor: Extract<Actor, { type: 'user' }>; context?: AuditContext },
+) {
+  return transitionAction(tx, {
+    actionId: input.actionId,
+    from: 'concept',
+    to: 'rejected',
+    actor: input.actor,
+    context: input.context,
+  });
+}
+
+/**
+ * Back to concept to edit: after a failure, or after executing a type whose
+ * provider object can be updated. Approving and executing again updates the
+ * same provider object.
+ */
+export async function reopenAction(
+  tx: TenantTransaction,
+  input: { actionId: string; actor: Extract<Actor, { type: 'user' }>; context?: AuditContext },
+) {
+  const current = await getAction(tx, input.actionId);
+  if (!current) throw new TransitionError('not_found', 'actions', 'executed', 'concept');
+  const action = await transitionAction(tx, {
+    actionId: input.actionId,
+    from: current.status === 'failed' ? 'failed' : 'executed',
+    to: 'concept',
+    actor: input.actor,
+    context: input.context,
+  });
+  if (current.status === 'failed') {
+    await resolveFailureCards(tx, input.actionId, input.actor, input.context);
+  }
+  return action;
+}
+
+/** The open `action_failed` card of an action is done once the user acts on it. */
+async function resolveFailureCards(
+  tx: TenantTransaction,
+  actionId: string,
+  actor: Actor,
+  context: AuditContext | undefined,
+) {
+  const open = await tx
+    .select({ id: cards.id, status: cards.status })
+    .from(cards)
+    .where(
+      and(
+        eq(cards.actionId, actionId),
+        eq(cards.kind, 'action_failed'),
+        inArray(cards.status, ['open', 'snoozed']),
+      ),
+    );
+  for (const card of open) {
+    await transitionCard(tx, { cardId: card.id, from: card.status, to: 'done', actor, context });
+  }
 }
 
 export async function getAction(tx: TenantTransaction, actionId: string) {

@@ -1,7 +1,7 @@
 # Datamodel
 
 Dit document beschrijft het schema van EffectiefAI 2.0. Elke schemawijziging werkt dit document bij in dezelfde PR (zie CLAUDE.md).
-Beslissingen staan in `docs/decisions.md` (#033–#049). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
+Beslissingen staan in `docs/decisions.md` (#033–#051). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
 
 Inhoud:
 
@@ -266,6 +266,7 @@ Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat
 | `documents`, `document_chunks`, `chunk_embeddings`, `document_entities` | gebouwd | 0009, 0010 |
 | `company_profile`, `insights` | gebouwd | 0009, 0010 |
 | `source_chunk_id`, `actions.playbook_id` | gebouwd | 0009 |
+| `actions.execution_job_id`, `cards.action_id`, status `executing`, kaartsoort `action_failed` | gebouwd | 0011, 0012 |
 | `webhook_deliveries` | ontwerp | |
 
 Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, en repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/` (nog geen API-procedures, geen extractie, leren of RAG).
@@ -279,7 +280,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 |---|---|
 | `connections` | `active → revoked \| expired`, `expired → active \| revoked \| purged`, `revoked → purged` |
 | `cards` | `open → snoozed \| done \| dismissed \| expired`, `snoozed → open \| done \| dismissed \| expired` |
-| `actions` | `concept → approved \| rejected`, `approved → executed \| failed`, `failed → approved`, `executed → concept` |
+| `actions` | `concept → approved \| rejected`, `approved → executing`, `executing → executed \| failed`, `failed → approved \| concept`, `executed → concept` (niet voor definitieve types, #050) |
 | `facts` | `proposed → confirmed \| rejected` |
 | `playbooks` | `proposed → confirmed \| rejected`, `confirmed → retired` |
 
@@ -305,8 +306,8 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
   - `tasks`: `(status = 'done') = (completed_at is not null)`.
   - `entities`: `merged_into_id <> id`.
   - `connections`: `status <> 'purged' or account_label is null`; `status_reason` is een gesloten lijst (`invalid_grant`, `provider_revoked`, `user_disconnected`, `reauthorized`, `data_purged`).
-  - `cards`: `(status = 'snoozed') = (snoozed_until is not null)`; `(kind = 'connection_problem') = (connection_id is not null)`; `(kind = 'task_due') = (task_id is not null)`; `priority between 0 and 3`. `cards.connection_id` is `on delete cascade`.
-  - `actions`: `(input_purged_at is null) = (proposed_input is not null and input is not null)`; `attempts >= 0`.
+  - `cards`: `(status = 'snoozed') = (snoozed_until is not null)`; `(kind = 'connection_problem') = (connection_id is not null)`; `(kind = 'task_due') = (task_id is not null)`; `(kind = 'action_failed') = (action_id is not null)`; `priority between 0 and 3`. `cards.connection_id` en `cards.action_id` zijn `on delete cascade`.
+  - `actions`: `(input_purged_at is null) = (proposed_input is not null and input is not null)`; `attempts >= 0`; `status <> 'executing' or execution_job_id is not null`; `last_error_code` is een gesloten lijst (`actionErrorCodes`).
   - `audit_log`: `(actor_type = 'user') = (actor_user_id is not null)`.
   - `facts`: `superseded_by_id is null or valid_to is not null`; `superseded_by_id <> id`; `structured->>'attribute' = attribute`. Trigger `facts_end_once`: `valid_to` en `superseded_by_id` zijn eenmalig (behalve `set null` via de FK).
   - `playbooks`: `version >= 1`; `supersedes_id <> id`; `scope_user_id` is `on delete cascade` (een persoonlijk playbook verdwijnt met het lid).
@@ -465,7 +466,7 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 
 | Kolom | Type | Betekenis | PG |
 |---|---|---|---|
-| `kind` | text, check | `email_reply` · `quote_request` · `payment_overdue` · `connection_problem` · `knowledge_review` (feiten/playbooks bevestigen) · `task_due` · `insight` | — |
+| `kind` | text, check | `email_reply` · `quote_request` · `payment_overdue` · `connection_problem` · `knowledge_review` (feiten/playbooks bevestigen) · `task_due` · `insight` · `action_failed` (uitvoeren mislukt, #050) | — |
 | `status` | text, check | `open` · `snoozed` · `done` · `dismissed` · `expired` | — |
 | `title` | text not null | | I |
 | `summary` | text null | | I |
@@ -474,6 +475,7 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 | `dedupe_key` | text null | Bijv. `thread:<thread_key>` of `connection:<id>`; voorkomt dubbele kaarten | — |
 | `connection_id` | uuid null | FK; bij `connection_problem` | — |
 | `task_id` | uuid null | FK `tasks`, cascade; bij `task_due` | — |
+| `action_id` | uuid null | FK `actions`, cascade; bij `action_failed` | — |
 | `snoozed_until` | timestamptz null | | — |
 | `resolved_at` | timestamptz null | | — |
 | `resolved_by_user_id` | uuid null | FK `member` | — |
@@ -494,7 +496,7 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 | `card_id` | uuid not null | FK `cards`, cascade | — |
 | `connection_id` | uuid not null | FK `connections`; via welke koppeling | — |
 | `type` | text, check | `email.reply` · `moneybird.quote` · `moneybird.invoice_reminder` · `mollie.payment_link` · … | — |
-| `status` | text, check | `concept` · `approved` · `executed` · `failed` · `rejected` | — |
+| `status` | text, check | `concept` · `approved` · `executing` · `executed` · `failed` · `rejected` | — |
 | `proposed_input` | jsonb null | Wat de AI voorstelde, onveranderlijk. Basis voor leren van correcties | I |
 | `input` | jsonb null | Wat de gebruiker goedkeurde (na bewerken) | I |
 | `input_purged_at` | timestamptz null | Gezet door retentie; dan zijn beide inputs `null` | — |
@@ -504,12 +506,13 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 | `playbook_id` | uuid null | FK `playbooks`, `set null`; volgens welk playbook | — |
 | `approved_by_user_id` | uuid null | FK `member` | — |
 | `approved_at`, `executed_at` | timestamptz null | | — |
-| `attempts` | smallint | | — |
-| `last_error_code` | text null | | — |
+| `attempts` | smallint | Hoe vaak een execute-job de actie claimde | — |
+| `execution_job_id` | text null | De job die de actie claimde (`executing`); alleen die rondt af | — |
+| `last_error_code` | text null, check | Gesloten lijst `actionErrorCodes` (`provider_unavailable`, `auth_expired`, `rejected_by_provider`, …); nooit een providermelding | — |
 | `ai_model`, `ai_trace_id` | text null | | — |
 
 - **Constraints:** `unique (tenant_id, idempotency_key)`; `check (status <> 'executed' or provider_object_id is not null)`; `check (status in ('concept','rejected') or approved_at is not null)` — uitgevoerd of goedgekeurd kan niet zonder akkoord. De check staat op `approved_at` en niet op `approved_by_user_id`, omdat die laatste `null` wordt als het lid verdwijnt (#046). Dat het een gebruiker was, dwingt `transitionAction()` af en staat in `audit_log`.
-- **Triggers:** `actions_status_guard` met de overgangen `concept → approved | rejected`, `approved → executed | failed`, `failed → approved` (opnieuw proberen na akkoord), `executed → concept` (bewerken na uitvoeren: wordt een update van hetzelfde provider-object). `actions_guard`:
+- **Triggers:** `actions_status_guard` met de overgangen `concept → approved | rejected`, `approved → executing` (een job claimt), `executing → executed | failed`, `failed → approved` (opnieuw proberen na akkoord), `failed → concept` (bewerken na een fout), `executed → concept` (bewerken na uitvoeren: wordt een update van hetzelfde provider-object). `actions_final_guard` weigert `executed → concept` voor definitieve types (`email.reply`, `moneybird.invoice_reminder`; `afterExecute: 'final'` in `actionRegistry`). `actions_guard`:
   - een nieuwe actie heeft geen akkoord, uitvoering of provider-object, en `input = proposed_input`;
   - `input` mag alleen wijzigen vanuit `concept`;
   - `proposed_input` nooit;
@@ -517,7 +520,8 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
   Alleen retentie mag beide inputs legen, samen met `input_purged_at`.
 - **Idempotency-key:** `<card_id>:<type>:<ordinal>`; de job geeft het volgnummer mee (standaard 1). Een herhaald voorstel geeft de bestaande actie terug (`created: false`).
 - **Voorstellen** (`proposeAction()`) kan alleen via een actieve connectie van een provider die het type kan uitvoeren (`actionProviders` in `packages/shared/src/domain/action.ts`).
-- **Bewerken na uitvoeren:** het `provider_object_id` blijft; uitvoeren doet dan een update bij de provider, nooit een nieuw object.
+- **Bewerken na uitvoeren:** het `provider_object_id` blijft; uitvoeren doet dan een update bij de provider, nooit een nieuw object. Niet voor definitieve types: een verstuurde mail is niet bij te werken.
+- **Uitvoeren** (#050, `packages/db/src/feed/execution.ts`, job `execute-action`): `claimExecution()` zet `approved → executing` met `execution_job_id` (alleen vanuit `approved`, dus nooit zonder akkoord; van twee jobs wint er één; een retry van dezelfde job gaat verder). Daarna de adapter, buiten een transactie, met de idempotency-key en het eventuele `provider_object_id`. Dan in één transactie `completeExecution()` (`executed`, event `action.executed`, kaart `done`) of `failExecution()` (`failed`, `last_error_code`, kaart `action_failed`; bij `auth_expired` ook connectie `expired` met kaart `connection_problem`). Opnieuw goedkeuren of bewerken na een fout sluit de kaart `action_failed`.
 - **Indexen:** `(tenant_id, card_id)`; `(tenant_id, status)`; `(tenant_id, playbook_id)`.
 - **Verwijderen:** niet door de app; hard via cascade van `cards` (retentie, forget). Inputs worden geleegd door retentie (180 dagen na eindstatus, voorstel).
 - **Fase:** 1.
@@ -533,7 +537,7 @@ Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, 
 | `occurred_at` | timestamptz | | — |
 | `actor_type` | text, check | `user` · `agent` · `system` | — |
 | `actor_user_id` | uuid null | **Geen FK**: moet blijven bestaan als de gebruiker weg is | — |
-| `action` | text, check | `action.proposed` · `action.approved` · `action.executed` · `fact.confirmed` · `entity.forgotten` · `connection.revoked` · `retention.purged` · … | — |
+| `action` | text, check | `action.proposed` · `action.approved` · `action.started` · `action.executed` · `fact.confirmed` · `entity.forgotten` · `connection.revoked` · `retention.purged` · … | — |
 | `object_type` | text, check | Tabelnaam | — |
 | `object_id` | uuid null | **Geen FK** | — |
 | `from_status`, `to_status` | text null | | — |
@@ -794,7 +798,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `playbooks` | S, I, U(`status`, `confirmed_by_user_id`, `confirmed_at`) | inhoud onveranderlijk (nieuwe versie) |
 | `playbook_examples` | S, I, D | |
 | `cards` | S, I, U(`status`, `title`, `summary`, `payload`, `priority`, `snoozed_until`, `resolved_at`, `resolved_by_user_id`), D | |
-| `actions` | S, I, U(`status`, `proposed_input`, `input`, `input_purged_at`, `provider_object_id`, `result`, `approved_by_user_id`, `approved_at`, `executed_at`, `attempts`, `last_error_code`) | `proposed_input` onveranderlijk behalve legen door retentie (trigger `actions_guard`); trigger op overgangen |
+| `actions` | S, I, U(`status`, `proposed_input`, `input`, `input_purged_at`, `provider_object_id`, `result`, `approved_by_user_id`, `approved_at`, `executed_at`, `attempts`, `execution_job_id`, `last_error_code`) | `proposed_input` onveranderlijk behalve legen door retentie (trigger `actions_guard`); trigger op overgangen |
 | `tasks` | S, I, U(`title`, `notes`, `due_at`, `status`, `assignee_user_id`, `completed_at`, `completed_by_user_id`), D | |
 | `audit_log` | S, I | append-only; trigger weigert U/D |
 | `company_profile` | S, I, U(alle) | verdwijnt met de tenant |
@@ -839,7 +843,7 @@ sequenceDiagram
 3. **Classificeren** (job `classify`, per event): het model krijgt de mail als gemarkeerde, onvertrouwde data, plus `company_profile`. Output (Zod): relevant ja/nee, soort, samenvatting, voorgestelde entiteiten, voorgestelde feiten. **Geen databasetransactie open tijdens de modelaanroep.**
 4. **Vastleggen** (één transactie): `events.summary`; bij relevant: entiteiten aanmaken of koppelen (contact + bedrijf, identifiers), kaart aanmaken of bijwerken (`dedupe_key = thread:<thread_key>`), `card_events`/`card_entities`, voorgestelde feiten als `proposed` (fase 2). Bij niet relevant: alleen de samenvatting; geen kaart, geen entiteit.
 5. **Actie voorstellen** (job `propose`): context = mail-inhoud + bevestigde feiten en relaties van de entiteiten + playbooks (embedding-zoektocht op `trigger_description`, filter op scope) + live providerdata (bijv. openstaande facturen uit Moneybird). Output → `actions` met `status = 'concept'`, `proposed_input` = `input`, `playbook_id`, deterministische `idempotency_key`. Handtekening en taal in code.
-6. **Akkoord en uitvoeren:** gebruiker bewerkt eventueel `input` en keurt goed (`approved`, audit) → job `execute` via de adapter met de idempotency-key → `provider_object_id` → `executed` + event `action.executed` (`caused_by_action_id`) + kaart `done`, alles in één transactie na de providerreactie.
+6. **Akkoord en uitvoeren:** gebruiker bewerkt eventueel `input` en keurt goed (`actions.approve`, `approved`, audit) → job `execute-action` (één per akkoord) claimt de actie (`executing`) → adapter met de idempotency-key → `provider_object_id` → `executed` + event `action.executed` (`caused_by_action_id`) + kaart `done`, alles in één transactie na de providerreactie. Bij een fout: retries met backoff, daarna `failed` met een foutcode en een kaart `action_failed` (#050).
 
 ### 6.2 Van correctie tot playbook-voorstel
 

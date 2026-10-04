@@ -33,13 +33,16 @@ export const cardTransitions: Transitions<CardStatus> = {
 };
 
 /**
- * `failed → approved`: retry after a new approval. `executed → concept`:
- * editing after execution, which updates the same provider object.
+ * `approved → executing`: one execute job claims the action before calling the
+ * provider. `failed → approved`: retry after a new approval; `failed → concept`:
+ * edit after a failure. `executed → concept`: editing after execution, which
+ * updates the same provider object; refused for final types (actionRegistry).
  */
 export const actionTransitions: Transitions<ActionStatus> = {
   concept: ['approved', 'rejected'],
-  approved: ['executed', 'failed'],
-  failed: ['approved'],
+  approved: ['executing'],
+  executing: ['executed', 'failed'],
+  failed: ['approved', 'concept'],
   executed: ['concept'],
   rejected: [],
 };
@@ -96,6 +99,7 @@ export const cardAuditActions = {
 export const actionAuditActions = {
   concept: 'action.reopened',
   approved: 'action.approved',
+  executing: 'action.started',
   rejected: 'action.rejected',
   executed: 'action.executed',
   failed: 'action.failed',

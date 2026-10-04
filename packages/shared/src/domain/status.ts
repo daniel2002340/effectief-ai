@@ -71,6 +71,7 @@ export const cardKinds = [
   'knowledge_review',
   'task_due',
   'insight',
+  'action_failed',
 ] as const;
 export type CardKind = (typeof cardKinds)[number];
 
@@ -85,8 +86,41 @@ export const actionTypes = [
 ] as const;
 export type ActionType = (typeof actionTypes)[number];
 
-export const actionStatuses = ['concept', 'approved', 'executed', 'failed', 'rejected'] as const;
+/** `executing`: claimed by one execute job, which is calling the provider. */
+export const actionStatuses = [
+  'concept',
+  'approved',
+  'executing',
+  'executed',
+  'failed',
+  'rejected',
+] as const;
 export type ActionStatus = (typeof actionStatuses)[number];
+
+/**
+ * Why executing an action failed; a code, never a provider error message
+ * (those can hold personal data). The UI shows a Dutch text per code.
+ */
+export const actionErrorCodes = [
+  /** Provider down or timing out; retried. */
+  'provider_unavailable',
+  /** Too many requests; retried. */
+  'rate_limited',
+  /** The grant is no longer valid: the connection expires, no retries. */
+  'auth_expired',
+  /** The connection is not active (anymore). */
+  'connection_inactive',
+  /** The provider refused the input. */
+  'rejected_by_provider',
+  /** The provider object to update no longer exists. */
+  'provider_object_missing',
+  /** The stored input no longer passes its schema, or was purged. */
+  'invalid_input',
+  /** No adapter for this provider and action type. */
+  'unsupported',
+  'unknown',
+] as const;
+export type ActionErrorCode = (typeof actionErrorCodes)[number];
 
 /** Who did something: a person, the AI, or the system (jobs, retention). */
 export const actorTypes = ['user', 'agent', 'system'] as const;
@@ -109,6 +143,7 @@ export const auditActions = [
   'card.expired',
   'action.proposed',
   'action.approved',
+  'action.started',
   'action.rejected',
   'action.executed',
   'action.failed',

@@ -403,3 +403,12 @@ Format:
 - **Context:** Open vraag 1 stelde fase 1 en 2 voor; de opdracht voor PR 4 vroeg ook `documents`, `document_chunks` en `insights`.
 - **Beslissing:** Ook de kennistabellen van fase 3 (`documents`, `document_chunks`, `chunk_embeddings`, `document_entities`, `insights`) bestaan nu, met schema, RLS, grants, tests en repository-functies. Extractie, chunking, embedden, object storage en RAG volgen in latere sessies.
 - **Gevolgen:** `source_chunk_id` en `actions.playbook_id` bestaan nu (#042 afgerond). `documents.storage_key` blijft leeg tot er object storage is.
+
+## #050 Uitvoeren van acties: status `executing`, foutcodes, definitieve types
+- **Datum:** 2026-10-04
+- **Status:** geaccepteerd
+- **Context:** Een dubbele approve of execute mag maar één effect bij de provider hebben, ook bij gelijktijdige jobs of een crash tussen de providerreactie en de commit. Een mislukte uitvoering mag niet stil verdwijnen. Een verstuurde mail is niet bij te werken.
+- **Beslissing:** Nieuwe status `executing`: een job claimt `approved → executing` atomair met `execution_job_id`; alleen die job (of zijn retry) roept de adapter aan en rondt af. Adapters zijn idempotent op de key (opnieuw aanmaken geeft het eerste object terug). Fouten als gesloten lijst `actionErrorCodes` in `last_error_code`, met Nederlandse tekst in de UI, nooit de providermelding. `actionRegistry` per type met `afterExecute: 'update' | 'final'`; `email.reply` en `moneybird.invoice_reminder` zijn definitief, en trigger `actions_final_guard` weigert daar `executed → concept`. oRPC `actions.approve` en `actions.reject` horen bij deze PR.
+- **Alternatieven:** Een rij-lock tijdens de provider-aanroep (bezette verbinding, na een crash niets te zien); alleen idempotency bij de provider (Moneybird en Gmail kennen geen idempotency-key); vrije tekst voor fouten (persoonsgegevens); `email.reply` als concept in de mailbox.
+- **Gevolgen:** Uitbreiding van #044 en #046: overgangen `approved → executing → executed | failed`, `attempts` telt claims. Elke echte adapter moet uitleggen hoe hij dubbel aanmaken met dezelfde key voorkomt.
+

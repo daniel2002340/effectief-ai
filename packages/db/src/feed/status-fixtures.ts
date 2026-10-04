@@ -9,10 +9,12 @@ import {
   asUser,
   createTestCard,
   createTestConnection,
+  quoteInput,
   replyInput,
   system,
 } from './test-fixtures.ts';
 
+type TestActionType = 'email.reply' | 'moneybird.quote';
 type InTenant = <T>(fn: (tx: TenantTransaction) => Promise<T>) => Promise<T>;
 
 /** Rows in a given status, reached through allowed transitions only. */
@@ -59,22 +61,37 @@ export function rowsInStatus(inTenant: InTenant, tenant: TestTenant) {
     });
   }
 
-  async function proposed(tx: TenantTransaction) {
-    const connection = await createTestConnection(tx, tenant);
+  async function proposed(tx: TenantTransaction, type: TestActionType) {
     const card = await createTestCard(tx);
+    if (type === 'moneybird.quote') {
+      const connection = await createTestConnection(tx, tenant, 'moneybird');
+      const { action } = await proposeAction(tx, {
+        cardId: card.id,
+        connectionId: connection.id,
+        type,
+        input: quoteInput,
+        actor: agent,
+      });
+      return action;
+    }
+    const connection = await createTestConnection(tx, tenant);
     const { action } = await proposeAction(tx, {
       cardId: card.id,
       connectionId: connection.id,
-      type: 'email.reply',
+      type,
       input: replyInput,
       actor: agent,
     });
     return action;
   }
 
-  async function actionIn(status: ActionStatus): Promise<Action> {
+  /** `email.reply` is final after executing, `moneybird.quote` can be updated. */
+  async function actionIn(
+    status: ActionStatus,
+    type: TestActionType = 'email.reply',
+  ): Promise<Action> {
     return inTenant(async (tx) => {
-      const action = await proposed(tx);
+      const action = await proposed(tx, type);
       if (status === 'concept') return action;
       if (status === 'rejected') {
         return transitionAction(tx, {
@@ -91,10 +108,18 @@ export function rowsInStatus(inTenant: InTenant, tenant: TestTenant) {
         actor: user,
       });
       if (status === 'approved') return approved;
+      const executing = await transitionAction(tx, {
+        actionId: action.id,
+        from: 'approved',
+        to: 'executing',
+        jobId: `job-${action.id}`,
+        actor: system,
+      });
+      if (status === 'executing') return executing;
       if (status === 'executed') {
         return transitionAction(tx, {
           actionId: action.id,
-          from: 'approved',
+          from: 'executing',
           to: 'executed',
           providerObjectId: `draft-${action.id}`,
           result: { providerThreadId: 'thread-1' },
@@ -103,7 +128,7 @@ export function rowsInStatus(inTenant: InTenant, tenant: TestTenant) {
       }
       return transitionAction(tx, {
         actionId: action.id,
-        from: 'approved',
+        from: 'executing',
         to: 'failed',
         errorCode: 'provider_unavailable',
         actor: system,
