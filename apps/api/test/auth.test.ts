@@ -3,45 +3,18 @@ import { sql } from '@effectief/db';
 import { errorResponseSchema } from '@effectief/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { authDatabase, createTestApp, testEnv } from './helpers.ts';
+import {
+  authDatabase,
+  createTestApp,
+  registerTenant,
+  removeRegisteredTenants,
+  sessionCookie,
+  testEnv,
+} from './helpers.ts';
 
 const origin = testEnv.APP_ORIGIN;
 const json = { 'content-type': 'application/json', origin };
 const password = 'een-lang-wachtwoord';
-const createdUsers: string[] = [];
-const createdTenants: string[] = [];
-
-/** Signs up a user, creates their company and returns the session cookie. */
-async function registerTenant(app: FastifyInstance, company: string) {
-  const email = `test-${randomUUID()}@example.test`;
-  const signUp = await app.inject({
-    method: 'POST',
-    url: '/api/auth/sign-up/email',
-    headers: json,
-    payload: { name: 'Test Gebruiker', email, password },
-  });
-  expect(signUp.statusCode).toBe(200);
-  createdUsers.push(signUp.json().user.id);
-  // Creating the organization makes it the session's active tenant.
-  const cookie = sessionCookie(signUp.headers['set-cookie']);
-
-  const created = await app.inject({
-    method: 'POST',
-    url: '/api/auth/organization/create',
-    headers: { ...json, cookie },
-    payload: { name: company, slug: `test-${randomUUID()}` },
-  });
-  expect(created.statusCode).toBe(200);
-  const tenantId: string = created.json().id;
-  createdTenants.push(tenantId);
-  return { email, cookie, tenantId };
-}
-
-function sessionCookie(header: string | string[] | undefined): string {
-  const cookies = Array.isArray(header) ? header : header ? [header] : [];
-  const session = cookies.find((value) => value.includes('session_token='));
-  return session?.split(';')[0] ?? '';
-}
 
 let app: FastifyInstance;
 let a: Awaited<ReturnType<typeof registerTenant>>;
@@ -55,13 +28,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  // Cascades to members, sessions, accounts and tenant_settings.
-  await authDatabase.db.execute(
-    sql`delete from organization where id in ${sql.raw(`('${createdTenants.join("','")}')`)}`,
-  );
-  await authDatabase.db.execute(
-    sql`delete from "user" where id in ${sql.raw(`('${createdUsers.join("','")}')`)}`,
-  );
+  await removeRegisteredTenants();
 });
 
 describe('session cookie', () => {
