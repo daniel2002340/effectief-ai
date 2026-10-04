@@ -19,6 +19,18 @@ export const replyInput: ActionInput<'email.reply'> = {
   inReplyToMessageId: 'msg-1',
 };
 
+export const quoteInput: ActionInput<'moneybird.quote'> = {
+  providerContactId: 'contact-1',
+  lines: [
+    {
+      description: 'Cv-ketel vervangen',
+      quantity: '1',
+      unitPriceExclVatCents: 185_000,
+      vatRateBps: 2100,
+    },
+  ],
+};
+
 export const agent = { type: 'agent' } as const;
 export const system = { type: 'system' } as const;
 export const asUser = (userId: string) => ({ type: 'user', userId }) as const;

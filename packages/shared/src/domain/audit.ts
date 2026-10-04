@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   type AuditAction,
+  actionErrorCodes,
   actionTypes,
   auditActions,
   auditObjectTypes,
@@ -43,7 +44,7 @@ const actionMetadata = z.strictObject({
   type: z.enum(actionTypes),
   cardId: z.uuid(),
   providerObjectId: auditCodeSchema.optional(),
-  errorCode: auditCodeSchema.optional(),
+  errorCode: z.enum(actionErrorCodes).optional(),
   attempts: z.int().min(0).optional(),
 });
 
@@ -74,6 +75,7 @@ export const auditMetadataSchemas = {
   'card.expired': cardMetadata,
   'action.proposed': actionMetadata,
   'action.approved': actionMetadata,
+  'action.started': actionMetadata,
   'action.rejected': actionMetadata,
   'action.executed': actionMetadata,
   'action.failed': actionMetadata,

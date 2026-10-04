@@ -1,4 +1,4 @@
-import type { ActionStatus } from '@effectief/shared';
+import { type ActionStatus, finalActionTypes } from '@effectief/shared';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openTestDatabases, type TestTenant } from '../test-support.ts';
@@ -6,7 +6,7 @@ import { type TenantTransaction, withTenant } from '../with-tenant.ts';
 import { transitionAction } from './actions.ts';
 import { listAuditLog } from './audit.ts';
 import { rowsInStatus } from './status-fixtures.ts';
-import { agent, asUser, replyInput, system } from './test-fixtures.ts';
+import { agent, asUser, quoteInput, replyInput, system } from './test-fixtures.ts';
 
 // The action pipeline through transitionAction(): approval by a user only,
 // input that changes only in concept, and a provider object that is reused
@@ -26,7 +26,8 @@ afterAll(() => db.close());
 
 const inTenant = <T>(fn: (tx: TenantTransaction) => Promise<T>) =>
   withTenant(db.app.db, tenant.tenantId, fn);
-const actionIn = (status: ActionStatus) => rows.actionIn(status);
+const actionIn = (status: ActionStatus, type?: 'email.reply' | 'moneybird.quote') =>
+  rows.actionIn(status, type);
 const integrityViolation = { cause: expect.objectContaining({ code: '23000' }) };
 
 describe('actions', () => {
@@ -55,16 +56,23 @@ describe('actions', () => {
       approvedByUserId: tenant.userId,
     });
 
-    const executed = await inTenant((tx) =>
-      transitionAction(tx, {
+    const executed = await inTenant(async (tx) => {
+      await transitionAction(tx, {
         actionId: action.id,
         from: 'approved',
+        to: 'executing',
+        jobId: 'job-1',
+        actor: system,
+      });
+      return transitionAction(tx, {
+        actionId: action.id,
+        from: 'executing',
         to: 'executed',
         providerObjectId: 'draft-42',
         result: { providerThreadId: 'thread-1' },
         actor: system,
-      }),
-    );
+      });
+    });
     expect(executed).toMatchObject({
       status: 'executed',
       providerObjectId: 'draft-42',
@@ -77,9 +85,10 @@ describe('actions', () => {
     expect(audit.map((e) => [e.action, e.actorType])).toEqual([
       ['action.proposed', 'agent'],
       ['action.approved', 'user'],
+      ['action.started', 'system'],
       ['action.executed', 'system'],
     ]);
-    expect(audit[2]?.metadata).toEqual({
+    expect(audit[3]?.metadata).toEqual({
       type: 'email.reply',
       cardId: action.cardId,
       providerObjectId: 'draft-42',
@@ -112,7 +121,7 @@ describe('actions', () => {
   });
 
   it('a failed action is retried after a new approval; editing after execution reuses the provider object', async () => {
-    const failed = await actionIn('failed');
+    const failed = await actionIn('failed', 'moneybird.quote');
     expect(failed).toMatchObject({ lastErrorCode: 'provider_unavailable', attempts: 1 });
     await expect(
       inTenant((tx) =>
@@ -120,11 +129,29 @@ describe('actions', () => {
           actionId: failed.id,
           from: 'failed',
           to: 'approved',
-          input: replyInput,
+          input: quoteInput,
           actor: user,
         }),
       ),
     ).rejects.toThrow(/only change while it is a concept/);
+
+    const execute = (tx: TenantTransaction, jobId: string, providerObjectId: string) =>
+      transitionAction(tx, {
+        actionId: failed.id,
+        from: 'approved',
+        to: 'executing',
+        jobId,
+        actor: system,
+      }).then(() =>
+        transitionAction(tx, {
+          actionId: failed.id,
+          from: 'executing',
+          to: 'executed',
+          providerObjectId,
+          result: {},
+          actor: system,
+        }),
+      );
 
     await inTenant(async (tx) => {
       await transitionAction(tx, {
@@ -133,14 +160,7 @@ describe('actions', () => {
         to: 'approved',
         actor: user,
       });
-      await transitionAction(tx, {
-        actionId: failed.id,
-        from: 'approved',
-        to: 'executed',
-        providerObjectId: 'draft-7',
-        result: {},
-        actor: system,
-      });
+      await execute(tx, 'job-2', 'quote-7');
       const reopened = await transitionAction(tx, {
         actionId: failed.id,
         from: 'executed',
@@ -149,7 +169,7 @@ describe('actions', () => {
       });
       expect(reopened).toMatchObject({
         status: 'concept',
-        providerObjectId: 'draft-7',
+        providerObjectId: 'quote-7',
         approvedByUserId: null,
         approvedAt: null,
       });
@@ -157,35 +177,56 @@ describe('actions', () => {
         actionId: failed.id,
         from: 'concept',
         to: 'approved',
-        input: { ...replyInput, subject: 'Re: Offerte (aangepast)' },
+        input: { ...quoteInput, reference: 'Aangepast' },
         actor: user,
       });
     });
 
     // A repeat updates the same provider object; a different one is refused.
+    await expect(inTenant((tx) => execute(tx, 'job-3', 'quote-8'))).rejects.toMatchObject(
+      integrityViolation,
+    );
+    const executed = await inTenant((tx) => execute(tx, 'job-3', 'quote-7'));
+    expect(executed).toMatchObject({ providerObjectId: 'quote-7', attempts: 3 });
+  });
+
+  it('a final type cannot be edited after executing, also with raw SQL', async () => {
+    const executed = await actionIn('executed');
     await expect(
       inTenant((tx) =>
         transitionAction(tx, {
-          actionId: failed.id,
-          from: 'approved',
-          to: 'executed',
-          providerObjectId: 'draft-8',
-          result: {},
-          actor: system,
+          actionId: executed.id,
+          from: 'executed',
+          to: 'concept',
+          actor: user,
         }),
       ),
+    ).rejects.toMatchObject({ name: 'TransitionError', code: 'invalid_transition' });
+    await expect(
+      inTenant((tx) =>
+        tx.execute(
+          sql`update actions set status = 'concept', approved_at = null where id = ${executed.id}`,
+        ),
+      ),
     ).rejects.toMatchObject(integrityViolation);
-    const executed = await inTenant((tx) =>
-      transitionAction(tx, {
-        actionId: failed.id,
-        from: 'approved',
-        to: 'executed',
-        providerObjectId: 'draft-7',
-        result: {},
-        actor: system,
-      }),
+
+    // After a failure the input can be edited, also for a final type.
+    const failed = await actionIn('failed');
+    const reopened = await inTenant((tx) =>
+      transitionAction(tx, { actionId: failed.id, from: 'failed', to: 'concept', actor: user }),
     );
-    expect(executed).toMatchObject({ providerObjectId: 'draft-7', attempts: 3 });
+    expect(reopened.status).toBe('concept');
+  });
+
+  it('the final types match the arguments of actions_final_guard', async () => {
+    const { rows } = await db.app.db.execute<{ args: string }>(sql`
+      select encode(t.tgargs, 'escape') as args
+        from pg_trigger t
+       where t.tgname = 'actions_final_guard'
+    `);
+    expect(rows[0]?.args.split('\\000').filter(Boolean).sort()).toEqual(
+      [...finalActionTypes].sort(),
+    );
   });
 
   it('input only changes in concept and proposed_input never, except by retention', async () => {
@@ -229,12 +270,12 @@ describe('actions', () => {
       ),
     ).rejects.toMatchObject({ name: 'ZodError' });
 
-    const approved = await actionIn('approved');
+    const executing = await actionIn('executing');
     await expect(
       inTenant((tx) =>
         transitionAction(tx, {
-          actionId: approved.id,
-          from: 'approved',
+          actionId: executing.id,
+          from: 'executing',
           to: 'executed',
           providerObjectId: 'draft-1',
           result: { body: 'Beste Jan' },

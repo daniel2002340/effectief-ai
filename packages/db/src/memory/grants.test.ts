@@ -95,6 +95,7 @@ const expectedGrants: Record<string, Expected> = {
       'approved_at',
       'executed_at',
       'attempts',
+      'execution_job_id',
       'last_error_code',
       'updated_at',
     ],
