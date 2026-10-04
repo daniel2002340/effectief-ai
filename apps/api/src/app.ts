@@ -7,6 +7,7 @@ import { createAuth, resolveSession } from './auth/auth.ts';
 import { authRoutes } from './auth/routes.ts';
 import type { ApiEnv } from './env.ts';
 import { loggerOptions } from './logger.ts';
+import type { EnqueueExecuteAction } from './orpc/actions.ts';
 import { orpcRoutes } from './orpc/plugin.ts';
 import { createRouter } from './orpc/router.ts';
 import { errorHandler } from './plugins/error-handler.ts';
@@ -26,6 +27,8 @@ export interface AppDependencies {
     /** As auth_runtime: only Better Auth uses this (decision #031). */
     auth: Database;
   };
+  /** Puts an approved action on the execute queue (BullMQ in main.ts). */
+  enqueueExecuteAction: EnqueueExecuteAction;
   /** Requests per IP per minute; lowered in tests. */
   rateLimitMax?: number;
   /** Sign-in and sign-up attempts per IP per window. */
@@ -39,6 +42,7 @@ export async function buildApp({
   env,
   redis,
   databases,
+  enqueueExecuteAction,
   rateLimitMax = 300,
   loginRateLimit = { max: 10, timeWindow: '15 minutes' },
   webhooks = webhookRoutes,
@@ -63,6 +67,7 @@ export async function buildApp({
   const router = createRouter({
     appDb: databases.app,
     resolveSession: (headers) => resolveSession(auth, databases.auth, headers),
+    enqueueExecuteAction,
   });
 
   await app.register(healthRoutes);

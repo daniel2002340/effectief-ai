@@ -1,5 +1,12 @@
 import { createDatabase } from '@effectief/db';
-import { parseEnv } from '@effectief/shared';
+import {
+  defaultJobOptions,
+  type ExecuteActionJob,
+  executeActionJobId,
+  parseEnv,
+  queueNames,
+} from '@effectief/shared';
+import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { buildApp } from './app.ts';
 import { apiEnvSchema } from './env.ts';
@@ -10,10 +17,21 @@ const env = parseEnv(apiEnvSchema, process.env);
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 1, lazyConnect: true });
 const appDatabase = createDatabase(env.DATABASE_URL);
 const authDatabase = createDatabase(env.DATABASE_AUTH_URL);
+const executeQueue = new Queue<ExecuteActionJob>(queueNames.executeAction, {
+  connection: { url: env.REDIS_URL, maxRetriesPerRequest: 1 },
+  defaultJobOptions,
+});
 const app = await buildApp({
   env,
   redis,
   databases: { app: appDatabase.db, auth: authDatabase.db },
+  enqueueExecuteAction: async ({ tenantId, actionId, approvedAt }) => {
+    await executeQueue.add(
+      'execute',
+      { tenantId, actionId },
+      { jobId: executeActionJobId(actionId, approvedAt) },
+    );
+  },
 });
 redis.on('error', (error) => app.log.error({ err: error }, 'valkey connection error'));
 redis.connect().catch(() => {
@@ -26,7 +44,12 @@ async function shutdown(signal: string) {
   shuttingDown = true;
   app.log.info({ signal }, 'shutting down');
   await app.close();
-  await Promise.all([redis.quit(), appDatabase.close(), authDatabase.close()]);
+  await Promise.all([
+    redis.quit(),
+    executeQueue.close(),
+    appDatabase.close(),
+    authDatabase.close(),
+  ]);
   process.exit(0);
 }
 process.on('SIGTERM', () => void shutdown('SIGTERM'));

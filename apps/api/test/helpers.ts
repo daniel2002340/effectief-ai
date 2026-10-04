@@ -1,8 +1,9 @@
-import { createDatabase } from '@effectief/db';
+import { randomUUID } from 'node:crypto';
+import { createDatabase, sql } from '@effectief/db';
 import { parseEnv } from '@effectief/shared';
 import type { FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
-import { afterAll } from 'vitest';
+import { afterAll, expect } from 'vitest';
 import { type AppDependencies, buildApp } from '../src/app.ts';
 import { type ApiEnv, apiEnvSchema } from '../src/env.ts';
 
@@ -10,9 +11,12 @@ export const testEnv = parseEnv(apiEnvSchema, { ...process.env, LOG_LEVEL: 'sile
 
 const redis = new Redis(testEnv.REDIS_URL);
 // Same roles as production: the app role and the auth role, never the owner.
-const appDatabase = createDatabase(testEnv.DATABASE_URL);
+export const appDatabase = createDatabase(testEnv.DATABASE_URL);
 export const authDatabase = createDatabase(testEnv.DATABASE_AUTH_URL);
 afterAll(() => Promise.all([redis.quit(), appDatabase.close(), authDatabase.close()]));
+
+/** Execute jobs the API enqueued, newest last; tests read and clear it. */
+export const enqueuedExecutions: { tenantId: string; actionId: string; approvedAt: Date }[] = [];
 
 export type TestAppOptions = Partial<Omit<AppDependencies, 'env'>> & {
   env?: Partial<ApiEnv>;
@@ -30,9 +34,63 @@ export async function createTestApp(
     env: { ...testEnv, ...env },
     redis,
     databases: { app: appDatabase.db, auth: authDatabase.db },
+    enqueueExecuteAction: async (job) => {
+      enqueuedExecutions.push(job);
+    },
     ...options,
   });
   if (extend) await extend(app);
   await app.ready();
   return app;
+}
+
+const json = { 'content-type': 'application/json', origin: testEnv.APP_ORIGIN };
+const createdUsers: string[] = [];
+const createdTenants: string[] = [];
+
+/** Signs up a user, creates their company and returns the session cookie. */
+export async function registerTenant(app: FastifyInstance, company: string) {
+  const email = `test-${randomUUID()}@example.test`;
+  const signUp = await app.inject({
+    method: 'POST',
+    url: '/api/auth/sign-up/email',
+    headers: json,
+    payload: { name: 'Test Gebruiker', email, password: 'een-lang-wachtwoord' },
+  });
+  expect(signUp.statusCode).toBe(200);
+  const userId: string = signUp.json().user.id;
+  createdUsers.push(userId);
+  // Creating the organization makes it the session's active tenant.
+  const cookie = sessionCookie(signUp.headers['set-cookie']);
+
+  const created = await app.inject({
+    method: 'POST',
+    url: '/api/auth/organization/create',
+    headers: { ...json, cookie },
+    payload: { name: company, slug: `test-${randomUUID()}` },
+  });
+  expect(created.statusCode).toBe(200);
+  const tenantId: string = created.json().id;
+  createdTenants.push(tenantId);
+  return { email, cookie, tenantId, userId };
+}
+
+export function sessionCookie(header: string | string[] | undefined): string {
+  const cookies = Array.isArray(header) ? header : header ? [header] : [];
+  const session = cookies.find((value) => value.includes('session_token='));
+  return session?.split(';')[0] ?? '';
+}
+
+/** Deleting the organizations cascades to members, sessions and every tenant table. */
+export async function removeRegisteredTenants() {
+  if (createdTenants.length > 0) {
+    await authDatabase.db.execute(
+      sql`delete from organization where id in ${sql.raw(`('${createdTenants.join("','")}')`)}`,
+    );
+  }
+  if (createdUsers.length > 0) {
+    await authDatabase.db.execute(
+      sql`delete from "user" where id in ${sql.raw(`('${createdUsers.join("','")}')`)}`,
+    );
+  }
 }

@@ -1,12 +1,14 @@
 import { type Database, eq, schema, withTenant } from '@effectief/db';
 import { type CurrentTenant, contract, currentTenantSchema } from '@effectief/shared';
 import { ORPCError } from '@orpc/server';
+import { actionHandlers, type EnqueueExecuteAction } from './actions.ts';
 import { createBuilders, type SessionResolver } from './builders.ts';
 
 export interface RouterDependencies {
   /** Connection as app_runtime; customer data only via withTenant(). */
   appDb: Database;
   resolveSession: SessionResolver;
+  enqueueExecuteAction: EnqueueExecuteAction;
 }
 
 /** Reads the tenant within its RLS scope: organization and settings of `tenantId` only. */
@@ -24,8 +26,9 @@ async function readCurrentTenant(appDb: Database, tenantId: string): Promise<Cur
   return currentTenantSchema.parse(row);
 }
 
-export function createRouter({ appDb, resolveSession }: RouterDependencies) {
+export function createRouter({ appDb, resolveSession, enqueueExecuteAction }: RouterDependencies) {
   const { procedure, publicProcedure, router } = createBuilders(contract, resolveSession);
+  const actions = actionHandlers({ appDb, enqueueExecuteAction });
 
   return router({
     system: {
@@ -45,6 +48,14 @@ export function createRouter({ appDb, resolveSession }: RouterDependencies) {
         );
         return readCurrentTenant(appDb, tenantId);
       }),
+    },
+    actions: {
+      approve: procedure.actions.approve.handler(({ context, input }) =>
+        actions.approve(context, input),
+      ),
+      reject: procedure.actions.reject.handler(({ context, input }) =>
+        actions.reject(context, input),
+      ),
     },
   });
 }

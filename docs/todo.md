@@ -7,9 +7,9 @@ Alleen open punten. Afgerond = regel verwijderen. Regels voor bijhouden: zie CLA
 Handmatige acties buiten de code: accounts, app-installaties, verificaties, beslissingen.
 
 - [ ] Renovate als GitHub-app op de repo installeren (#025)
-- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048)
+- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051)
 - [ ] Branch protection op `main`: CI-checks verplicht voor merge (#025)
-- [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047)
+- [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047), actiestatus met `executing` in de domeinbegrippen (`concept → approved → executing → executed | failed`, #050)
 - [ ] Hosting kiezen met routering op pad (`/api`, `/webhooks` → api) en `API_TRUST_PROXY` daarop afstemmen (#021, #027)
 - [ ] Bij de hosting: login-rollen voor `app_runtime` en `auth_runtime` aanmaken met eigen wachtwoorden; de eigenaar alleen voor migraties (#031)
 - [ ] Nango-account aanmaken, en hostingregio en DPA controleren (#005)
@@ -33,6 +33,10 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] Kolomnamen met klasse P/I uit `packages/db/src/pii.ts` toevoegen aan de redaction-sleutels in `packages/shared/src/logging.ts` (docs/data-model.md §3.7)
 - [ ] `resolve_connection()` en `list_tenant_ids()` bouwen met de webhook- en retentie-PR (#038, docs/data-model.md §3.10)
 - [ ] `proposeAction()` en `addEntityExternalRef()` gooien een gewone `Error` bij een onbekende of ongeschikte connectie; een getypte fout maken zodat de API die naar `NOT_FOUND`/`CONFLICT` vertaalt (`packages/db/src/feed/`)
+- [ ] Sweeper voor acties die blijven hangen: `approved` zonder job (queue onbereikbaar bij akkoord) of `executing` na een crash in de laatste poging; vereist `list_tenant_ids()` (#050, #038)
+- [ ] Echte adapters voor Moneybird, Gmail, Outlook en Mollie in `packages/integrations/<provider>/`, elk idempotent op de key; tot dan faalt een goedgekeurde actie als `unsupported` (#051, `apps/worker/src/main.ts`)
+- [ ] API-procedure voor bewerken na uitvoeren of na een fout (`reopenAction()` bestaat in `packages/db/src/feed/actions.ts`) (#051)
+- [ ] BullMQ bewaart de foutmelding van een mislukte job (`failedReason`) in Valkey; bij een onbekende fout kan daar tekst met persoonsgegevens in staan. Melding vervangen door een code (`apps/worker/src/jobs/execute-action.ts`)
 - [ ] `replaceFact()` en `createPlaybookVersion()` gooien `KnowledgeError`; bij de eerste API-procedures vertalen naar `NOT_FOUND`/`CONFLICT`, net als `TransitionError` (`packages/db/src/knowledge/`)
 
 ## Later
