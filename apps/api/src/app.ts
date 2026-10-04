@@ -74,7 +74,7 @@ export async function buildApp({
     enqueueExecuteAction,
   });
 
-  await app.register(healthRoutes);
+  await app.register(healthRoutes, { release: env.APP_RELEASE });
   await app.register(authRoutes, { auth, env, loginRateLimit });
   await app.register(orpcRoutes, { router });
   await registerWebhookRoutes(app, webhooks);

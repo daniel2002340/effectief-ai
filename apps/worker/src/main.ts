@@ -16,9 +16,10 @@ const database = createDatabase(env.DATABASE_URL);
 // card for the user, until its adapter exists (docs/todo.md).
 const adapters: AdapterRegistry = {};
 
-// BullMQ workers need maxRetriesPerRequest: null to block on Valkey.
+// BullMQ workers need maxRetriesPerRequest: null to block on Valkey. family 0:
+// resolve both IPv4 and IPv6, as private networks may offer either.
 const started = startWorkers({
-  connection: { url: env.REDIS_URL, maxRetriesPerRequest: null },
+  connection: { url: env.REDIS_URL, family: 0, maxRetriesPerRequest: null },
   log,
   db: database.db,
   adapters,

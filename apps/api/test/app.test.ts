@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { AppError } from '../src/errors.ts';
-import { createTestApp, reportedErrors } from './helpers.ts';
+import { createTestApp, reportedErrors, testEnv } from './helpers.ts';
 
 let app: FastifyInstance;
 
@@ -27,7 +27,7 @@ describe('GET /health', () => {
   it('returns 200 with security headers and a request id', async () => {
     const response = await app.inject({ method: 'GET', url: '/health' });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: 'ok' });
+    expect(response.json()).toEqual({ status: 'ok', release: testEnv.APP_RELEASE });
     expect(response.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
     expect(response.headers['x-content-type-options']).toBe('nosniff');
   });

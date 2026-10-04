@@ -16,11 +16,12 @@ const env = parseEnv(apiEnvSchema, process.env);
 const reportError = initMonitoring(env);
 // Fail fast when Valkey is down: rate-limited requests are refused instead of
 // hanging. The API still starts without Valkey, so /health keeps answering.
-const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 1, lazyConnect: true });
+// family 0: resolve both IPv4 and IPv6, as private networks may offer either.
+const redis = new Redis(env.REDIS_URL, { family: 0, maxRetriesPerRequest: 1, lazyConnect: true });
 const appDatabase = createDatabase(env.DATABASE_URL);
 const authDatabase = createDatabase(env.DATABASE_AUTH_URL);
 const executeQueue = new Queue<ExecuteActionJob>(queueNames.executeAction, {
-  connection: { url: env.REDIS_URL, maxRetriesPerRequest: 1 },
+  connection: { url: env.REDIS_URL, family: 0, maxRetriesPerRequest: 1 },
   defaultJobOptions,
 });
 const app = await buildApp({

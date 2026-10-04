@@ -41,7 +41,12 @@ FROM caddy:2.11.6-alpine
 ENV XDG_DATA_HOME=/tmp/caddy/data XDG_CONFIG_HOME=/tmp/caddy/config
 COPY apps/web/Caddyfile /etc/caddy/Caddyfile
 COPY apps/web/edge-entrypoint.sh /usr/local/bin/edge-entrypoint
+# Pre-deploy on the host: edge-wait-for-api (decision #064)
+COPY apps/web/edge-wait-for-api.sh /usr/local/bin/edge-wait-for-api
 COPY --from=build /repo/apps/web/dist /srv
+# Same release as the bundle; the pre-deploy waits for an api with this release.
+ARG VITE_APP_RELEASE
+ENV APP_RELEASE=$VITE_APP_RELEASE
 USER nobody
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/edge-entrypoint"]

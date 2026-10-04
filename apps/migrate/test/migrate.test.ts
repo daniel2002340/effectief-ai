@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { expectedMigration, findRoleProblems, isSchemaCurrent } from '@effectief/db/deploy';
+import {
+  expectedMigration,
+  findRoleProblems,
+  isSchemaCurrent,
+  waitForSchema,
+} from '@effectief/db/deploy';
 import { parseEnv } from '@effectief/shared';
 import pg from 'pg';
 import { pino } from 'pino';
@@ -90,5 +95,27 @@ describe('migration step (database)', () => {
   it('lets the app role check the schema version', async () => {
     expect(expectedMigration.tag).toMatch(/^\d{4}_/);
     expect(await isSchemaCurrent(env.DATABASE_URL)).toBe(true);
+  });
+
+  it('waits for a migration that is not there and gives up after the timeout', async () => {
+    const missing = { createdAt: 1 };
+    expect(await isSchemaCurrent(env.DATABASE_URL, missing)).toBe(false);
+    let waits = 0;
+    const started = Date.now();
+    const current = await waitForSchema(env.DATABASE_URL, {
+      timeoutMs: 300,
+      intervalMs: 100,
+      migration: missing,
+      onWait: () => {
+        waits += 1;
+      },
+    });
+    expect(current).toBe(false);
+    expect(waits).toBeGreaterThanOrEqual(2);
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it('returns at once when the schema is current', async () => {
+    expect(await waitForSchema(env.DATABASE_URL, { timeoutMs: 0, intervalMs: 1_000 })).toBe(true);
   });
 });
