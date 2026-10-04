@@ -7,7 +7,7 @@ import { defineConfig } from 'tsup';
  * next to the bundle with `pnpm deploy --prod` (decision #028).
  */
 export default defineConfig({
-  entry: ['src/main.ts', 'src/check-schema.ts'],
+  entry: ['src/main.ts', 'src/status.ts'],
   format: ['esm'],
   platform: 'node',
   target: 'node24',

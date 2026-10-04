@@ -394,7 +394,7 @@ Organisatie in de **EU-regio (Frankfurt)**; die keuze kan later niet meer verand
 | worker | `@sentry/node` | idem; de `failed`-handler meldt een job pas na de laatste poging, met queue, job-ID en aantal pogingen |
 | web | `@sentry/react` | in `main.tsx`; alleen fouten, geen tracing, geen Session Replay |
 
-Nieuwe dependencies: `@sentry/node` en `@sentry/react` 11.2.0, en `@sentry/cli` 3.8.0 (dev, voor uploads; root-script `sourcemaps:upload`). Bestaand alternatief bekeken: pino logt al fouten, maar zonder groepering, alerts of releases. Let op: `@sentry/node` 11 neemt `@sentry/bundler-plugins` (met Babel en Rollup) mee als runtime-dependency; het api-image wordt daardoor ±50 MB groter. De opties en het scrubben staan één keer in `packages/shared/src/monitoring.ts` (zonder Sentry-import).
+Nieuwe dependencies: `@sentry/node` en `@sentry/react` 10.75.3, en `@sentry/cli` 3.8.0 (dev, voor uploads; root-script `sourcemaps:upload`). Bestaand alternatief bekeken: pino logt al fouten, maar zonder groepering, alerts of releases. Bewust 10.x en niet 11: `@sentry/node` 11 neemt `@sentry/bundler-plugins` (Babel, Rollup, Vite) mee als runtime-dependency, wat het api-image ±200 MB groter maakte. Met 10.75.3 is het ±46 MB. De opties en het scrubben staan één keer in `packages/shared/src/monitoring.ts` (zonder Sentry-import).
 
 ### 6.2 Releases en source maps
 

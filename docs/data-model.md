@@ -816,6 +816,8 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 
 `auth_runtime` krijgt op geen van deze tabellen rechten. Twee `SECURITY DEFINER`-functies (eigenaar: migratierol, `search_path` vast, alleen `EXECUTE` voor `app_runtime`): `resolve_connection(provider, nango_connection_id)` (nog niet gebouwd) en `list_tenant_ids()` (0014). Ze geven alleen ID's terug.
 
+Buiten `public`: `app_runtime` heeft `USAGE` op schema `drizzle` en alleen `SELECT` op `drizzle.__drizzle_migrations` (0015), zodat api en worker vóór de start controleren of het schema bij hun build past (#058).
+
 De test `packages/db/src/memory/grants.test.ts` vergelijkt de werkelijke grants van alle tabellen met `tenant_id` met deze tabel, zodat dit document en de database niet uit elkaar lopen. Een nieuwe tenant-tabel laat die test falen tot hij er in staat.
 
 ---
