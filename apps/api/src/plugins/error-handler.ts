@@ -1,3 +1,4 @@
+import type { ReportError } from '@effectief/shared';
 import type { FastifyError, FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 import { ZodError } from 'zod';
@@ -6,10 +7,11 @@ import { toErrorIssues } from '../issues.ts';
 
 /**
  * Every error leaves the API in the same shape: `{ error: { code, message, requestId } }`.
- * Unexpected errors are logged and answered with a generic 500, never with details.
+ * Unexpected errors are logged, reported (Sentry, decision #055) and answered
+ * with a generic 500, never with details.
  */
 export const errorHandler = fp(
-  async (app: FastifyInstance) => {
+  async (app: FastifyInstance, { reportError }: { reportError: ReportError }) => {
     app.addHook('onSend', async (request, reply) => {
       reply.header('x-request-id', request.id);
     });
@@ -46,6 +48,7 @@ export const errorHandler = fp(
       const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 500;
       if (status >= 500) {
         request.log.error({ err: error }, 'request failed');
+        reportError(error, { requestId: request.id, route: request.routeOptions.url });
         return reply.status(500).send(errorBody('INTERNAL_ERROR', request.id));
       }
 

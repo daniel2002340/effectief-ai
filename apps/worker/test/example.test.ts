@@ -36,7 +36,15 @@ describe('example queue (Valkey)', () => {
   const queue = new Queue(queueNames.example, { connection, prefix, defaultJobOptions });
   const events = new QueueEvents(queueNames.example, { connection, prefix });
   const database = createDatabase(env.DATABASE_URL);
-  const workers = startWorkers({ connection, log, prefix, db: database.db, adapters: {} });
+  const reported: Record<string, unknown>[] = [];
+  const workers = startWorkers({
+    connection,
+    log,
+    prefix,
+    db: database.db,
+    adapters: {},
+    reportError: (_error, context) => reported.push(context),
+  });
 
   afterAll(async () => {
     await workers.close();
@@ -57,5 +65,12 @@ describe('example queue (Valkey)', () => {
     const job = await queue.add('example', { note: 'no tenant' }, { attempts: 1 });
     await expect(job.waitUntilFinished(events, 10_000)).rejects.toThrow();
     expect(await queue.getJobState(job.id as string)).toBe('failed');
+  });
+
+  it('reports a job to monitoring only after its last attempt', async () => {
+    reported.length = 0;
+    const retried = await queue.add('example', { note: 'no tenant' }, { attempts: 2, backoff: 0 });
+    await expect(retried.waitUntilFinished(events, 10_000)).rejects.toThrow();
+    expect(reported).toEqual([{ queue: queueNames.example, jobId: retried.id, attempts: 2 }]);
   });
 });

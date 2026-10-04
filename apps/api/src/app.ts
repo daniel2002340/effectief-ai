@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@effectief/db';
+import type { ReportError } from '@effectief/shared';
 import helmet from '@fastify/helmet';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
@@ -29,6 +30,8 @@ export interface AppDependencies {
   };
   /** Puts an approved action on the execute queue (BullMQ in main.ts). */
   enqueueExecuteAction: EnqueueExecuteAction;
+  /** Sends unexpected (5xx) errors to monitoring; IDs only. */
+  reportError: ReportError;
   /** Requests per IP per minute; lowered in tests. */
   rateLimitMax?: number;
   /** Sign-in and sign-up attempts per IP per window. */
@@ -43,6 +46,7 @@ export async function buildApp({
   redis,
   databases,
   enqueueExecuteAction,
+  reportError,
   rateLimitMax = 300,
   loginRateLimit = { max: 10, timeWindow: '15 minutes' },
   webhooks = webhookRoutes,
@@ -56,7 +60,7 @@ export async function buildApp({
   });
 
   // Must come first: routes registered below are checked by these hooks.
-  await app.register(errorHandler);
+  await app.register(errorHandler, { reportError });
   await app.register(routeAuth);
   await app.register(jsonOnly);
 

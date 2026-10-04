@@ -41,7 +41,14 @@ const log = pino({ level: 'silent' });
 const db = openTestDatabases();
 const prefix = `test-${randomUUID()}`;
 const connection = { url: env.REDIS_URL, maxRetriesPerRequest: null };
-const workers = startWorkers({ connection, log, prefix, db: db.app.db, adapters: {} });
+const workers = startWorkers({
+  connection,
+  log,
+  prefix,
+  db: db.app.db,
+  adapters: {},
+  reportError: () => {},
+});
 const queues = {
   forget: new Queue(queueNames.forgetEntity, { connection, prefix, defaultJobOptions }),
   purge: new Queue(queueNames.purgeConnection, { connection, prefix, defaultJobOptions }),

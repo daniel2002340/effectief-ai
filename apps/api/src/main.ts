@@ -10,8 +10,10 @@ import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import { buildApp } from './app.ts';
 import { apiEnvSchema } from './env.ts';
+import { closeMonitoring, initMonitoring } from './monitoring.ts';
 
 const env = parseEnv(apiEnvSchema, process.env);
+const reportError = initMonitoring(env);
 // Fail fast when Valkey is down: rate-limited requests are refused instead of
 // hanging. The API still starts without Valkey, so /health keeps answering.
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 1, lazyConnect: true });
@@ -25,6 +27,7 @@ const app = await buildApp({
   env,
   redis,
   databases: { app: appDatabase.db, auth: authDatabase.db },
+  reportError,
   enqueueExecuteAction: async ({ tenantId, actionId, approvedAt }) => {
     await executeQueue.add(
       'execute',
@@ -49,6 +52,7 @@ async function shutdown(signal: string) {
     executeQueue.close(),
     appDatabase.close(),
     authDatabase.close(),
+    closeMonitoring(),
   ]);
   process.exit(0);
 }

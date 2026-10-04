@@ -17,6 +17,7 @@
     "@effectief/db": "workspace:*",
     "@effectief/integrations": "workspace:*",
     "@effectief/shared": "workspace:*",
+    "@sentry/node": "11.2.0",
     "bullmq": "6.3.11",
     "ioredis": "catalog:",
     "pino": "catalog:",

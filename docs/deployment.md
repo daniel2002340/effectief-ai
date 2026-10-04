@@ -390,11 +390,11 @@ Organisatie in de **EU-regio (Frankfurt)**; die keuze kan later niet meer verand
 
 | App | SDK | Init |
 |---|---|---|
-| api | `@sentry/node` | `node --import ./dist/instrument.js dist/main.js` (ESM vraagt init vóór de imports) |
-| worker | `@sentry/node` | idem; plus `Sentry.captureException` in de `failed`-handler van BullMQ, met alleen job-ID, queue en foutcode |
+| api | `@sentry/node` | `initMonitoring()` in `main.ts`; de error handler meldt alleen 5xx via `reportError` met request-ID en route. Geen `--import`-preload nodig: we gebruiken geen tracing, alleen fouten |
+| worker | `@sentry/node` | idem; de `failed`-handler meldt een job pas na de laatste poging, met queue, job-ID en aantal pogingen |
 | web | `@sentry/react` | in `main.tsx`; alleen fouten, geen tracing, geen Session Replay |
 
-Nieuwe dependencies: `@sentry/node`, `@sentry/react`, en `@sentry/cli` (dev, voor uploads). Bestaand alternatief bekeken: pino logt al fouten, maar zonder groepering, alerts of releases.
+Nieuwe dependencies: `@sentry/node` en `@sentry/react` 11.2.0, en `@sentry/cli` 3.8.0 (dev, voor uploads; root-script `sourcemaps:upload`). Bestaand alternatief bekeken: pino logt al fouten, maar zonder groepering, alerts of releases. Let op: `@sentry/node` 11 neemt `@sentry/bundler-plugins` (met Babel en Rollup) mee als runtime-dependency; het api-image wordt daardoor ±50 MB groter. De opties en het scrubben staan één keer in `packages/shared/src/monitoring.ts` (zonder Sentry-import).
 
 ### 6.2 Releases en source maps
 

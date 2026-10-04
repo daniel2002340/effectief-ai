@@ -15,6 +15,9 @@ export const appDatabase = createDatabase(testEnv.DATABASE_URL);
 export const authDatabase = createDatabase(testEnv.DATABASE_AUTH_URL);
 afterAll(() => Promise.all([redis.quit(), appDatabase.close(), authDatabase.close()]));
 
+/** Errors the API reported to monitoring, newest last; tests read and clear it. */
+export const reportedErrors: { error: unknown; context: Record<string, unknown> }[] = [];
+
 /** Execute jobs the API enqueued, newest last; tests read and clear it. */
 export const enqueuedExecutions: { tenantId: string; actionId: string; approvedAt: Date }[] = [];
 
@@ -36,6 +39,9 @@ export async function createTestApp(
     databases: { app: appDatabase.db, auth: authDatabase.db },
     enqueueExecuteAction: async (job) => {
       enqueuedExecutions.push(job);
+    },
+    reportError: (error, context) => {
+      reportedErrors.push({ error, context });
     },
     ...options,
   });

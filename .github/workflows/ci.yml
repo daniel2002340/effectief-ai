@@ -26,7 +26,13 @@ env:
   APP_ORIGIN: http://localhost:5180
   BETTER_AUTH_SECRET: ci-test-only-not-a-real-secret-value
   AUTH_SIGNUP_ALLOWLIST: "*"
+  SENTRY_DSN: disabled
+  SENTRY_ENVIRONMENT: ci
+  APP_RELEASE: ${{ github.sha }}
   VITE_API_BASE_PATH: /api
+  VITE_SENTRY_DSN: disabled
+  VITE_SENTRY_ENVIRONMENT: ci
+  VITE_APP_RELEASE: ${{ github.sha }}
   WEB_DEV_API_TARGET: http://localhost:3000
 
 jobs:

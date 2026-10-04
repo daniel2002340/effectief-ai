@@ -1,4 +1,5 @@
 import { authDatabaseEnvSchema, databaseEnvSchema } from '@effectief/db';
+import { monitoringEnvSchema } from '@effectief/shared';
 import { z } from 'zod';
 
 const ipOrCidr = z.union([z.ipv4(), z.ipv6(), z.cidrv4(), z.cidrv6()]);
@@ -36,7 +37,7 @@ export type SignupAllowlist =
  * Comma-separated email addresses and `@domain` entries, or exactly `*` for
  * anyone. Required, so open registration is always an explicit choice.
  */
-export const signupAllowlistSchema = z
+const signupAllowlistSchema = z
   .string()
   .trim()
   .min(1)
@@ -87,6 +88,7 @@ export const apiEnvSchema = z
     BETTER_AUTH_SECRET: z.string().min(32),
     AUTH_SIGNUP_ALLOWLIST: signupAllowlistSchema,
     REDIS_URL: z.url({ protocol: /^rediss?$/ }),
+    ...monitoringEnvSchema.shape,
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.APP_ORIGIN.startsWith('https://'), {
     message: 'APP_ORIGIN must use https in production (secure session cookies)',

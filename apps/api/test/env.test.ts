@@ -16,6 +16,9 @@ const valid = {
   APP_ORIGIN: 'http://localhost:5180',
   BETTER_AUTH_SECRET: 'x'.repeat(32),
   AUTH_SIGNUP_ALLOWLIST: '*',
+  SENTRY_DSN: 'disabled',
+  SENTRY_ENVIRONMENT: 'test',
+  APP_RELEASE: 'dev',
   ...validDatabases,
 };
 

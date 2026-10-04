@@ -18,10 +18,12 @@
     "db:migrate": "pnpm --filter @effectief/db db:migrate",
     "db:roles": "pnpm --filter @effectief/db db:roles",
     "prepare": "lefthook install",
-    "test:e2e": "turbo run test:e2e"
+    "test:e2e": "turbo run test:e2e",
+    "sourcemaps:upload": "sentry-cli sourcemaps inject \"$SOURCEMAPS_DIR\" && sentry-cli sourcemaps upload --release \"$APP_RELEASE\" \"$SOURCEMAPS_DIR\""
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@sentry/cli": "3.8.0",
     "@types/node": "catalog:",
     "knip": "6.39.0",
     "lefthook": "2.1.16",

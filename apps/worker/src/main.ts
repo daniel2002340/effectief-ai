@@ -4,9 +4,11 @@ import { parseEnv } from '@effectief/shared';
 import { workerEnvSchema } from './env.ts';
 import { scheduleRetention } from './jobs/retention.ts';
 import { createLogger } from './logger.ts';
+import { closeMonitoring, initMonitoring } from './monitoring.ts';
 import { startWorkers } from './worker.ts';
 
 const env = parseEnv(workerEnvSchema, process.env);
+const reportError = initMonitoring(env);
 const log = createLogger(env);
 
 const database = createDatabase(env.DATABASE_URL);
@@ -20,6 +22,7 @@ const started = startWorkers({
   log,
   db: database.db,
   adapters,
+  reportError,
 });
 await scheduleRetention(started.retentionQueue);
 log.info({ queues: started.workers.map((worker) => worker.name) }, 'worker started');
@@ -31,6 +34,7 @@ async function shutdown(signal: string) {
   log.info({ signal }, 'shutting down');
   await started.close();
   await database.close();
+  await closeMonitoring();
   process.exit(0);
 }
 process.on('SIGTERM', () => void shutdown('SIGTERM'));

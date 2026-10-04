@@ -23,7 +23,10 @@
         "API_TRUST_PROXY",
         "APP_ORIGIN",
         "BETTER_AUTH_SECRET",
-        "AUTH_SIGNUP_ALLOWLIST"
+        "AUTH_SIGNUP_ALLOWLIST",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "APP_RELEASE"
       ]
     },
     "test:e2e": {

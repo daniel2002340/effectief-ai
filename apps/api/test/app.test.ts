@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { AppError } from '../src/errors.ts';
-import { createTestApp } from './helpers.ts';
+import { createTestApp, reportedErrors } from './helpers.ts';
 
 let app: FastifyInstance;
 
@@ -47,6 +47,20 @@ describe('error responses', () => {
     expect(response.statusCode).toBe(500);
     expect(errorResponseSchema.parse(response.json()).error.code).toBe('INTERNAL_ERROR');
     expect(response.body).not.toContain('hunter2');
+  });
+
+  it('reports unexpected errors to monitoring with IDs only, but not 4xx', async () => {
+    reportedErrors.length = 0;
+    const response = await app.inject({ method: 'GET', url: '/test/boom' });
+    expect(reportedErrors).toHaveLength(1);
+    expect(reportedErrors[0]?.context).toEqual({
+      requestId: response.headers['x-request-id'],
+      route: '/test/boom',
+    });
+
+    await app.inject({ method: 'GET', url: '/test/app-error' });
+    await app.inject({ method: 'GET', url: '/test/zod' });
+    expect(reportedErrors).toHaveLength(1);
   });
 
   it('turns Zod errors into VALIDATION_FAILED with issues', async () => {
