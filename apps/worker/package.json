@@ -14,6 +14,8 @@
     "smoke:job": "node --env-file-if-exists=../../.env scripts/smoke-job.ts"
   },
   "dependencies": {
+    "@effectief/db": "workspace:*",
+    "@effectief/integrations": "workspace:*",
     "@effectief/shared": "workspace:*",
     "bullmq": "6.3.11",
     "ioredis": "catalog:",

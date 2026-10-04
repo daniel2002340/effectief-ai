@@ -89,6 +89,9 @@ importers:
       better-auth:
         specifier: 1.7.7
         version: 1.7.7(drizzle-kit@0.31.11)(drizzle-orm@0.45.3(@types/pg@8.23.1)(kysely@0.29.6)(pg@8.23.1))(pg@8.23.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.3(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1)(esbuild@0.27.7)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)))
+      bullmq:
+        specifier: 6.3.11
+        version: 6.3.11(ioredis@5.11.1)(pg@8.23.1)
       fastify:
         specifier: 5.12.5
         version: 5.12.5
@@ -214,6 +217,12 @@ importers:
 
   apps/worker:
     dependencies:
+      '@effectief/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@effectief/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@effectief/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -307,6 +316,10 @@ importers:
         version: 5.0.3(@types/node@24.19.1)(vite@8.3.2(@types/node@24.19.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/integrations:
+    dependencies:
+      '@effectief/shared':
+        specifier: workspace:*
+        version: link:../shared
     devDependencies:
       '@effectief/config':
         specifier: workspace:*
