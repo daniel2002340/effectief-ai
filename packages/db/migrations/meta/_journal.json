@@ -92,6 +92,20 @@
       "when": 1791138059423,
       "tag": "0012_action_execution_triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791140344992,
+      "tag": "0013_data_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791140348667,
+      "tag": "0014_data_lifecycle_functions",
+      "breakpoints": true
     }
   ]
 }

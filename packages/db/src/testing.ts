@@ -6,6 +6,7 @@ export {
   createTestConnection,
   quoteInput,
   replyInput,
+  seedFeed,
   system,
 } from './feed/test-fixtures.ts';
 export { openTestDatabases, type TestTenant } from './test-support.ts';

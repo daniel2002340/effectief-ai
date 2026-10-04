@@ -1,0 +1,4 @@
+ALTER TABLE "audit_log" DROP CONSTRAINT "audit_log_action";--> statement-breakpoint
+ALTER TABLE "audit_log" DROP CONSTRAINT "audit_log_object_type";--> statement-breakpoint
+ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_action" CHECK ("audit_log"."action" in ('connection.created', 'connection.reactivated', 'connection.revoked', 'connection.expired', 'connection.purged', 'card.created', 'card.reopened', 'card.snoozed', 'card.done', 'card.dismissed', 'card.expired', 'action.proposed', 'action.approved', 'action.started', 'action.rejected', 'action.executed', 'action.failed', 'action.reopened', 'fact.confirmed', 'fact.rejected', 'fact.superseded', 'playbook.confirmed', 'playbook.rejected', 'playbook.retired', 'entity.forgotten', 'retention.purged'));--> statement-breakpoint
+ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_object_type" CHECK ("audit_log"."object_type" in ('connections', 'cards', 'actions', 'facts', 'playbooks', 'entities', 'event_contents'));

@@ -8,10 +8,10 @@ import {
   type TransitionCardInput,
   transitionCardInputSchema,
 } from '@effectief/shared';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { single } from '../memory/source.ts';
-import { cardEntities, cardEvents, cards } from '../schema/index.ts';
+import { actions, cardEntities, cardEvents, cards, entities, events } from '../schema/index.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 import { writeAudit } from './audit.ts';
 import { assertTransition, missedTransition } from './transition.ts';
@@ -157,10 +157,54 @@ export async function getCardLinks(tx: TenantTransaction, cardId: string) {
 
 /** Open cards, most important and newest first. */
 export function listFeed(tx: TenantTransaction, limit = 50) {
+  return listCards(tx, { status: 'open', limit });
+}
+
+const listCardsSchema = z.strictObject({
+  status: z.enum(['open', 'snoozed']),
+  limit: z.int().min(1).max(200).default(50),
+});
+
+/** Cards in one feed status, most important and newest first. */
+export function listCards(tx: TenantTransaction, query: z.input<typeof listCardsSchema>) {
+  const { status, limit } = listCardsSchema.parse(query);
   return tx
     .select()
     .from(cards)
-    .where(eq(cards.status, 'open'))
+    .where(eq(cards.status, status))
     .orderBy(desc(cards.priority), desc(cards.createdAt), desc(cards.id))
-    .limit(z.int().min(1).max(200).parse(limit));
+    .limit(limit);
+}
+
+/**
+ * A card with what it is based on: its events (newest first, without source
+ * content), its entities and its actions. Undefined when the card does not
+ * exist for this tenant.
+ */
+export async function getCardDetail(tx: TenantTransaction, cardId: string) {
+  const card = await getCard(tx, cardId);
+  if (!card) return undefined;
+  const linkedEvents = await tx
+    .select({ event: events })
+    .from(cardEvents)
+    .innerJoin(events, eq(events.id, cardEvents.eventId))
+    .where(eq(cardEvents.cardId, card.id))
+    .orderBy(desc(events.occurredAt), desc(events.id));
+  const linkedEntities = await tx
+    .select({ entity: entities })
+    .from(cardEntities)
+    .innerJoin(entities, eq(entities.id, cardEntities.entityId))
+    .where(eq(cardEntities.cardId, card.id))
+    .orderBy(asc(entities.name), asc(entities.id));
+  const cardActions = await tx
+    .select()
+    .from(actions)
+    .where(eq(actions.cardId, card.id))
+    .orderBy(asc(actions.createdAt), asc(actions.id));
+  return {
+    card,
+    events: linkedEvents.map((row) => row.event),
+    entities: linkedEntities.map((row) => row.entity),
+    actions: cardActions,
+  };
 }

@@ -10,6 +10,7 @@ export {
 } from './env.ts';
 export * from './feed/index.ts';
 export * from './knowledge/index.ts';
+export * from './lifecycle/index.ts';
 export * from './memory/index.ts';
 export * as schema from './schema/index.ts';
 export { type TenantTransaction, withTenant } from './with-tenant.ts';

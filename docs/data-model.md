@@ -1,7 +1,7 @@
 # Datamodel
 
 Dit document beschrijft het schema van EffectiefAI 2.0. Elke schemawijziging werkt dit document bij in dezelfde PR (zie CLAUDE.md).
-Beslissingen staan in `docs/decisions.md` (#033–#051). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
+Beslissingen staan in `docs/decisions.md` (#033–#052). Status: **deels gebouwd**, zie [§3.10](#310-bouwstatus) voor wat er staat en waar de bouw afwijkt.
 
 Inhoud:
 
@@ -247,7 +247,7 @@ Per tabel staat het in de sectie **Verwijderen**.
 | **2 — Geheugen** | leren van correcties | `facts`, `fact_embeddings`, `relations`, `playbooks`, `playbook_examples`, `playbook_embeddings`, `tasks`, `task_entities` |
 | **3 — Kennis** | documenten en afgeleide inzichten | `documents`, `document_chunks`, `chunk_embeddings`, `document_entities`, `insights` |
 
-Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat er later geen breuken nodig zijn), fase 3 pas als die fase begint. Zie open vraag 1.
+Alle tabellen van fase 1, 2 en 3 staan er (open vraag 1, #049); de logica volgt per fase.
 
 ### 3.10 Bouwstatus
 
@@ -267,9 +267,11 @@ Voorstel: alle tabellen van fase 1 en 2 nu aanmaken (het geheel ontworpen, zodat
 | `company_profile`, `insights` | gebouwd | 0009, 0010 |
 | `source_chunk_id`, `actions.playbook_id` | gebouwd | 0009 |
 | `actions.execution_job_id`, `cards.action_id`, status `executing`, kaartsoort `action_failed` | gebouwd | 0011, 0012 |
-| `webhook_deliveries` | ontwerp | |
+| `audit_log`: acties `entity.forgotten` en `retention.purged`, objecttypes `entities` en `event_contents` | gebouwd | 0013 |
+| `list_tenant_ids()` | gebouwd | 0014 |
+| `webhook_deliveries`, `resolve_connection()` | ontwerp | |
 
-Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, en repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/` (nog geen API-procedures, geen extractie, leren of RAG).
+Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/`, en de datalevenscyclus in `packages/db/src/lifecycle/` (retentie, forgetEntity, ontkoppelen en purgen; #052). API-procedures: `tenant.*`, `cards.list`, `cards.get`, `actions.approve`, `actions.reject`, `entities.get`. Nog geen extractie, leren of RAG.
 
 **Statusovergangen (#044).** `connections`, `cards` en `actions` veranderen van status alleen via `transitionConnection()`, `transitionCard()` en `transitionAction()`. Die controleren de overgang tegen de lijsten in `packages/shared/src/domain/transitions.ts`, doen `UPDATE … WHERE id = … AND status = <verwacht>` en schrijven in dezelfde transactie één regel in `audit_log`. Matcht de update geen rij, dan volgt `TransitionError` met `status_changed` (iemand anders was eerst) of `not_found`. In de database:
 
@@ -297,7 +299,11 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 
 - **Kolommen naar tabellen die nog niet bestaan** komen pas met hun doeltabel, mét samengestelde FK (#042). Een kolom zonder FK zou in de tussentijd naar een rij van een andere tenant kunnen wijzen.
   - Alle verwijzende kolommen uit het ontwerp staan er nu; `sourceRefSchema` accepteert alle vijf bronsoorten.
-- **Nog niet gebouwd bij `connections`:** de functies `resolve_connection()` en `list_tenant_ids()` (#038). Ze komen met de webhook- en retentie-PR, waar ze gebruikt worden.
+- **Nog niet gebouwd bij `connections`:** de functie `resolve_connection()` (#038). Die komt met de webhook-PR. `list_tenant_ids()` staat er (0014).
+- **Datalevenscyclus (#052)**, afwijkend van of aanvullend op het ontwerp hieronder:
+  - Retentie: de stap voor `webhook_deliveries` ontbreekt (tabel bestaat nog niet). Inputs van acties worden geleegd 180 dagen na de laatste statuswijziging (`updated_at`) in `executed`, `rejected` of `failed`. Elke batch is een eigen transactie met een eigen audit-regel.
+  - forgetEntity neemt ook entiteiten mee die in de persoon zijn samengevoegd (`merged_into_id`, recursief). De restcontrole in vrije tekst (§6.3 stap 3) is niet gebouwd (open vraag 5, docs/todo.md).
+  - Purgen van een connectie verwijdert ook kaarten (bij haar events, met een actie via haar, of `connection_problem` van haar) en documenten met `origin = 'connection'`. Een actieve connectie wordt geweigerd: eerst `disconnectConnection()` (`→ revoked`). Intrekken bij Nango is niet gebouwd.
 - **`tenant_id` heeft een default** uit de transactie (§3.1, #043), ook als primaire sleutel van `company_profile`.
 - **Fase 3 al aangemaakt:** `documents`, `document_chunks`, `chunk_embeddings`, `document_entities` en `insights` staan er al (open vraag 1), zonder verwerkingslogica.
 - **Extra checks:**
@@ -358,7 +364,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - **Constraints:** `unique (nango_connection_id)` (globaal; Nango-ID's zijn uniek per omgeving); partieel `unique (tenant_id, provider, external_account_id) where status = 'active'`.
 - **Indexen:** `(tenant_id, status)`.
 - **Tenant opzoeken bij webhooks:** de webhook weet alleen `nango_connection_id`. Opzoeken over tenants heen mag de app-rol niet. Daarvoor één smalle `SECURITY DEFINER`-functie `resolve_connection(provider, nango_connection_id) returns (tenant_id, connection_id)`, alleen uitvoerbaar door `app_runtime` (#038).
-- **Verwijderen:** zacht. Ontkoppelen: `revoked` → purge-job verwijdert de bijbehorende data (events, refs, externe-ref-koppelingen) → `purged`, `account_label` wordt `null`. De rij blijft als grafsteen voor audit en voor late webhooks.
+- **Verwijderen:** zacht. Ontkoppelen: `disconnectConnection()` (`revoked`) → job `purge-connection` met `purgeConnection()`: verwijdert events, `entity_external_refs`, documenten en kaarten van de connectie, en entiteiten die daarna nergens meer aan hangen (zie §6.3) → `purged`, `account_label` wordt `null`, aantallen in de audit-regel. De rij blijft als grafsteen voor audit en voor late webhooks.
 - **Retentie:** zolang de tenant bestaat.
 - **Fase:** 1.
 
@@ -433,14 +439,14 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - De tijdlijn-scan raakt geen grote tekstvelden (TOAST).
 - De bron blijft bij de provider: na verloop kan een gebruiker "toon originele mail" doen via `external_id`, zolang de connectie actief is.
 
-**Retentie-job:** een herhaalde BullMQ-job `retention:sweep` (dagelijks, 03:00 Europe/Amsterdam) haalt de tenant-ID's op via de `SECURITY DEFINER`-functie `list_tenant_ids()` (alleen ID's) en zet per tenant een job `retention:tenant` met `{ tenantId }`. Die job verwijdert binnen `withTenant()` in batches van 1.000 alles waarvan de termijn verlopen is:
+**Retentie-job:** in de queue `retention` draait een herhaalde job `sweep` (dagelijks, 03:00 Europe/Amsterdam, via een BullMQ job scheduler). Hij haalt de tenant-ID's op via de `SECURITY DEFINER`-functie `list_tenant_ids()` (alleen ID's) en zet per tenant een job `tenant` met `{ tenantId }` (job-ID per tenant per dag). Die job verwijdert binnen `withTenant()` in batches van 1.000 (`purgeExpiredBatch()`, elke batch een eigen transactie) alles waarvan de termijn verlopen is:
 
 1. `event_contents` met `retain_until < now()`;
-2. `actions.proposed_input` en `input` van acties die langer dan de termijn in een eindstatus staan (`input_purged_at` wordt gezet);
-3. `webhook_deliveries` met `status = 'processed'` ouder dan 30 dagen;
+2. `actions.proposed_input` en `input` van acties die langer dan 180 dagen in `executed`, `rejected` of `failed` staan (gemeten op `updated_at`; `input_purged_at` wordt gezet);
+3. `webhook_deliveries` met `status = 'processed'` ouder dan 30 dagen (nog niet gebouwd: de tabel bestaat nog niet);
 4. `cards` die langer dan 12 maanden gesloten zijn (cascade naar koppelingen).
 
-Per stap één audit-regel `retention.purged` met aantallen. Mislukt een batch, dan retryt de job (standaard BullMQ-opties); de selectie is idempotent.
+Per stap (en batch) met resultaat één audit-regel `retention.purged` met `{ step, count }`. Mislukt een batch, dan retryt de job (standaard BullMQ-opties); de selectie is idempotent.
 
 - **Bewaartermijn:** `tenant_settings.content_retention_days` (default 90, check 30–365). `retain_until` = `occurred_at` + die termijn, berekend bij het opnemen. Zie open vraag 3.
 - **Indexen:** `(tenant_id, retain_until)`.
@@ -725,7 +731,7 @@ Cascade (niet `set null`) op de bron: een voorbeeld is een afgeleide van een con
 | `computed_at`, `expires_at` | timestamptz | | — |
 
 - **Constraints:** `unique (tenant_id, kind, entity_id)` (nulls not distinct): opnieuw berekenen is een upsert.
-- In fase 1 bestaan inzichten alleen als kaart (`kind = 'insight'`); deze tabel komt pas als inzichten ook als context voor de AI dienen. **Fase:** 3.
+- De tabel bestaat (#049); de berekening volgt als inzichten ook als context voor de AI dienen. Tot dan bestaan inzichten alleen als kaart (`kind = 'insight'`). **Fase:** 3.
 
 #### `company_profile`
 
@@ -808,7 +814,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `insights` | S, I, U, D | herberekenbaar |
 | view `playbook_usage` | S | `security_invoker` |
 
-`auth_runtime` krijgt op geen van deze tabellen rechten. Twee `SECURITY DEFINER`-functies (eigenaar: migratierol, `search_path` vast, alleen `EXECUTE` voor `app_runtime`): `resolve_connection(provider, nango_connection_id)` en `list_tenant_ids()`. Ze geven alleen ID's terug.
+`auth_runtime` krijgt op geen van deze tabellen rechten. Twee `SECURITY DEFINER`-functies (eigenaar: migratierol, `search_path` vast, alleen `EXECUTE` voor `app_runtime`): `resolve_connection(provider, nango_connection_id)` (nog niet gebouwd) en `list_tenant_ids()` (0014). Ze geven alleen ID's terug.
 
 De test `packages/db/src/memory/grants.test.ts` vergelijkt de werkelijke grants van alle tabellen met `tenant_id` met deze tabel, zodat dit document en de database niet uit elkaar lopen. Een nieuwe tenant-tabel laat die test falen tot hij er in staat.
 
@@ -858,15 +864,15 @@ sequenceDiagram
 
 ### 6.3 forgetEntity (recht op vergetelheid)
 
-Wie: alleen een `owner` van de tenant, met bevestiging in de UI. Uitvoering als job `forget` met `{ tenantId, entityId, requestedByUserId }` (kan groot zijn), in één transactie binnen `withTenant()`.
+Wie: alleen een `owner` van de tenant, met bevestiging in de UI (de procedure die dit start bestaat nog niet, docs/todo.md). Uitvoering als job `forget-entity` met `{ tenantId, entityId, requestedByUserId }` (kan groot zijn): `forgetEntity()` in één transactie binnen `withTenant()`.
 
-1. **Verzamelen:** events via `event_entities` (alle rollen), kaarten via `card_entities` en via die events, taken via `task_entities`, identifiers van de entiteit.
+1. **Verzamelen:** de entiteit plus entiteiten die erin zijn samengevoegd (`merged_into_id`, recursief: dubbelen van dezelfde persoon), events via `event_entities` (alle rollen), kaarten via `card_entities` en via die events, taken via `task_entities`.
 2. **Verwijderen, in deze volgorde:**
    1. `cards` uit stap 1 → cascade `actions`, `card_events`, `card_entities`.
    2. `tasks` uit stap 1 → cascade `task_entities`, kaarten `task_due`.
    3. `events` uit stap 1 → cascade `event_contents`, `event_entities`, `card_events`, `playbook_examples`; `set null` op bronverwijzingen elders.
    4. `entities` (de entiteit) → cascade `entity_identifiers`, `entity_external_refs`, `relations` (beide kanten), `facts` → `fact_embeddings`, `playbooks` met scope `customer` → `playbook_embeddings` + `playbook_examples`, `event_entities`, `card_entities`, `task_entities`, `document_entities`, `insights`.
-3. **Restcontrole:** zoek in overgebleven vrije tekst (`facts.statement`, `playbooks.instruction`, `events.summary`, `cards.title`, `document_chunks.content`) naar de naam en identifiers van de entiteit. Treffers worden niet automatisch gewijzigd maar op een kaart gezet voor de owner (zie open vraag 5).
+3. **Restcontrole** (nog niet gebouwd): zoek in overgebleven vrije tekst (`facts.statement`, `playbooks.instruction`, `events.summary`, `cards.title`, `document_chunks.content`) naar de naam en identifiers van de entiteit. Treffers worden niet automatisch gewijzigd maar op een kaart gezet voor de owner (zie open vraag 5).
 4. **Audit:** één regel `entity.forgotten` met `object_id` en aantallen per tabel, zonder naam.
 5. **Buiten de database:**
    - Langfuse: traces met deze event-ID's verwijderen via de API (traces krijgen `tenantId` en event-ID's als metadata); daarnaast een korte bewaartermijn in Langfuse.
@@ -876,7 +882,7 @@ Wie: alleen een `owner` van de tenant, met bevestiging in de UI. Uitvoering als 
    - Back-ups: de verwijdering is daar effectief na de back-uptermijn (vastleggen in de privacyverklaring).
    - Providers (Moneybird, mailbox): wij verwijderen daar niets. De kaart na afloop vertelt de gebruiker dat de gegevens daar blijven en dat facturen een wettelijke bewaarplicht hebben.
 
-**Ontkoppelen van een connectie** gebruikt dezelfde bouwstenen: events en `entity_external_refs` van die connectie verwijderen, entiteiten die daarna nergens meer aan hangen (geen events, geen bevestigde feiten, niet door de gebruiker aangemaakt) verwijderen, connectie → `purged`.
+**Ontkoppelen van een connectie** gebruikt dezelfde bouwstenen (`purgeConnection()`): kaarten, events, `entity_external_refs` en documenten van die connectie verwijderen, daarna de entiteiten die via die connectie binnenkwamen en nergens meer aan hangen: geen events, externe referenties, kaarten, taken of documenten, geen bevestigd feit, bevestigde relatie of bevestigd playbook, geen identifier die de gebruiker invoerde (`source_type = 'user'`) en geen samengevoegde dubbelen. Connectie → `purged`.
 
 ---
 
@@ -884,7 +890,7 @@ Wie: alleen een `owner` van de tenant, met bevestiging in de UI. Uitvoering als 
 
 1. ~~**Wat nu aanmaken**~~ Beantwoord: alle tabellen van fase 1, 2 en 3 staan er (sessie 2, zie §3.10).
 2. **Automatisch entiteiten aanmaken:** maken we een contact aan voor elke relevante afzender (stap 4 in §6.1), of pas als de gebruiker iets met de kaart doet? Het eerste geeft een rijker geheugen, het tweede minder persoonsgegevens.
-3. **Bewaartermijn bron-inhoud:** default 90 dagen, per tenant in te stellen tussen 30 en 365? En inputs van acties 180 dagen na de eindstatus, gesloten kaarten 12 maanden?
+3. **Bewaartermijn bron-inhoud:** default 90 dagen, per tenant in te stellen tussen 30 en 365? En inputs van acties 180 dagen na de eindstatus, gesloten kaarten 12 maanden? De retentie-job gebruikt deze voorstelwaarden (`retentionPeriods` in `packages/db/src/lifecycle/retention.ts`, #052) tot er een antwoord is.
 4. **Bewaartermijn van de tijdlijn:** `events.summary` bevat persoonsgegevens en staat er nu zolang de tenant bestaat. Willen we een maximum (bijv. 7 jaar, gelijk aan de fiscale bewaarplicht, of korter)?
 5. **Forget in vrije tekst en documenten:** een feit over een andere klant of een document kan de vergeten persoon noemen. Voorstel: niet automatisch herschrijven, wel een kaart voor de owner. Akkoord, of willen we het model laten redigeren (met akkoord)?
 6. **`audit_log` na opzeggen:** verdwijnt nu met de tenant (cascade). Moeten we iets (zonder persoonsgegevens) langer bewaren voor geschillen of facturatie?

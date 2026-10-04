@@ -30,7 +30,7 @@ interface CallContext {
   log: { error: (object: object, message: string) => void };
 }
 
-const toSummary = (action: Action): ActionSummary => ({
+export const toActionSummary = (action: Action): ActionSummary => ({
   id: action.id,
   cardId: action.cardId,
   type: action.type,
@@ -90,7 +90,7 @@ export function actionHandlers({ appDb, enqueueExecuteAction }: ActionHandlerDep
         // The approval stands and stays visible as `approved`; see docs/todo.md.
         log.error({ err: error, tenantId, actionId: action.id }, 'enqueue execute-action failed');
       }
-      return toSummary(action);
+      return toActionSummary(action);
     },
 
     async reject(
@@ -107,7 +107,7 @@ export function actionHandlers({ appDb, enqueueExecuteAction }: ActionHandlerDep
       ).catch((error: unknown) => {
         throw toApiError(error);
       });
-      return toSummary(action);
+      return toActionSummary(action);
     },
   };
 }

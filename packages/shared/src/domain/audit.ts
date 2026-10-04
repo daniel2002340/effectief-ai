@@ -9,6 +9,7 @@ import {
   connectionProviders,
   connectionStatusReasons,
   playbookScopes,
+  retentionSteps,
 } from './status.ts';
 
 // audit_log: append-only, and it survives every deletion, so it holds no
@@ -33,9 +34,25 @@ export const auditContextSchema = z.strictObject({
 });
 export type AuditContext = z.infer<typeof auditContextSchema>;
 
+const count = z.int().min(0);
+
 const connectionMetadata = z.strictObject({
   provider: z.enum(connectionProviders),
   reason: z.enum(connectionStatusReasons).optional(),
+});
+
+/** Purging a connection: how many rows of its data were deleted. */
+export const connectionPurgeCountsSchema = z.strictObject({
+  events: count,
+  externalRefs: count,
+  documents: count,
+  cards: count,
+  entities: count,
+});
+export type ConnectionPurgeCounts = z.infer<typeof connectionPurgeCountsSchema>;
+
+const connectionPurgedMetadata = connectionMetadata.extend({
+  deleted: connectionPurgeCountsSchema.optional(),
 });
 
 const cardMetadata = z.strictObject({ kind: z.enum(cardKinds) });
@@ -61,12 +78,28 @@ const playbookMetadata = z.strictObject({
   version: z.int().min(1),
 });
 
+/** Forgetting a person: counts only, never the name or identifiers (§6.3). */
+const entityForgottenMetadata = z.strictObject({
+  deleted: z.strictObject({
+    entities: count,
+    events: count,
+    cards: count,
+    tasks: count,
+  }),
+});
+
+/** One retention step and how many rows it deleted or cleared (#037). */
+const retentionPurgedMetadata = z.strictObject({
+  step: z.enum(retentionSteps),
+  count,
+});
+
 export const auditMetadataSchemas = {
   'connection.created': connectionMetadata,
   'connection.reactivated': connectionMetadata,
   'connection.revoked': connectionMetadata,
   'connection.expired': connectionMetadata,
-  'connection.purged': connectionMetadata,
+  'connection.purged': connectionPurgedMetadata,
   'card.created': cardMetadata,
   'card.reopened': cardMetadata,
   'card.snoozed': cardMetadata,
@@ -86,6 +119,8 @@ export const auditMetadataSchemas = {
   'playbook.confirmed': playbookMetadata,
   'playbook.rejected': playbookMetadata,
   'playbook.retired': playbookMetadata,
+  'entity.forgotten': entityForgottenMetadata,
+  'retention.purged': retentionPurgedMetadata,
 } satisfies Record<AuditAction, z.ZodType>;
 
 export type AuditMetadata<A extends AuditAction = AuditAction> = z.infer<

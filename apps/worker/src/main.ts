@@ -2,6 +2,7 @@ import { createDatabase } from '@effectief/db';
 import type { AdapterRegistry } from '@effectief/integrations';
 import { parseEnv } from '@effectief/shared';
 import { workerEnvSchema } from './env.ts';
+import { scheduleRetention } from './jobs/retention.ts';
 import { createLogger } from './logger.ts';
 import { startWorkers } from './worker.ts';
 
@@ -14,21 +15,21 @@ const database = createDatabase(env.DATABASE_URL);
 const adapters: AdapterRegistry = {};
 
 // BullMQ workers need maxRetriesPerRequest: null to block on Valkey.
-const workers = startWorkers({
+const started = startWorkers({
   connection: { url: env.REDIS_URL, maxRetriesPerRequest: null },
   log,
   db: database.db,
   adapters,
 });
-log.info({ queues: workers.map((worker) => worker.name) }, 'worker started');
+await scheduleRetention(started.retentionQueue);
+log.info({ queues: started.workers.map((worker) => worker.name) }, 'worker started');
 
 let shuttingDown = false;
 async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info({ signal }, 'shutting down');
-  // close() waits for running jobs to finish.
-  await Promise.all(workers.map((worker) => worker.close()));
+  await started.close();
   await database.close();
   process.exit(0);
 }

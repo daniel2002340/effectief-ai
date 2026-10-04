@@ -126,7 +126,15 @@ export type ActionErrorCode = (typeof actionErrorCodes)[number];
 export const actorTypes = ['user', 'agent', 'system'] as const;
 export type ActorType = (typeof actorTypes)[number];
 
-export const auditObjectTypes = ['connections', 'cards', 'actions', 'facts', 'playbooks'] as const;
+export const auditObjectTypes = [
+  'connections',
+  'cards',
+  'actions',
+  'facts',
+  'playbooks',
+  'entities',
+  'event_contents',
+] as const;
 export type AuditObjectType = (typeof auditObjectTypes)[number];
 
 export const auditActions = [
@@ -154,8 +162,17 @@ export const auditActions = [
   'playbook.confirmed',
   'playbook.rejected',
   'playbook.retired',
+  'entity.forgotten',
+  'retention.purged',
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
+
+/**
+ * What the retention job removes (docs/data-model.md, event_contents):
+ * expired source content, inputs of long-finished actions, long-closed cards.
+ */
+export const retentionSteps = ['event_contents', 'action_inputs', 'closed_cards'] as const;
+export type RetentionStep = (typeof retentionSteps)[number];
 
 /** `retired`: replaced by a newer version or withdrawn by the user. */
 export const playbookStatuses = ['proposed', 'confirmed', 'rejected', 'retired'] as const;
