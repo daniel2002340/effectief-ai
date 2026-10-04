@@ -412,3 +412,10 @@ Format:
 - **Alternatieven:** Een rij-lock tijdens de provider-aanroep (bezette verbinding, na een crash niets te zien); alleen idempotency bij de provider (Moneybird en Gmail kennen geen idempotency-key); vrije tekst voor fouten (persoonsgegevens); `email.reply` als concept in de mailbox.
 - **Gevolgen:** Uitbreiding van #044 en #046: overgangen `approved → executing → executed | failed`, `attempts` telt claims. Elke echte adapter moet uitleggen hoe hij dubbel aanmaken met dezelfde key voorkomt.
 
+## #051 Adapter-interface en afhandeling van mislukte acties
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** PR 5 had een gedeelde adapter-interface, een fake provider en een kaart bij een mislukte actie nodig.
+- **Beslissing:** `ActionAdapter.execute({ type, input, connection, idempotencyKey, providerObjectId })` in `packages/integrations/src/adapter.ts`; met `providerObjectId` werkt hij bij, anders maakt hij aan. `AdapterError` heeft `code` en `retryable`. Tijdelijke fouten worden door BullMQ herhaald; bij de laatste poging of bij een definitieve fout volgt `failed` met de kaartsoort `action_failed` (FK `cards.action_id`, dedupe per actie). Bij `auth_expired` wordt de connectie `expired` met een kaart `connection_problem`. Nieuw: `failed → concept` (bewerken na een fout). Testhulpen via de subpaden `@effectief/integrations/testing` en `@effectief/db/testing`.
+- **Alternatieven:** De bestaande kaart van de actie heropenen (die kan al gesloten zijn, en een fout valt dan niet op); actie-ID in de payload (geen FK, blijft hangen na forget).
+- **Gevolgen:** De worker draait zonder echte adapters, dus een goedgekeurde actie faalt voorlopig als `unsupported`. Er is nog geen sweeper voor acties die blijven hangen in `approved` of `executing` (docs/todo.md).
