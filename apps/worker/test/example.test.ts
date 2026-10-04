@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createDatabase } from '@effectief/db';
 import { defaultJobOptions, parseEnv, queueNames } from '@effectief/shared';
 import { Queue, QueueEvents } from 'bullmq';
 import { pino } from 'pino';
@@ -34,10 +35,12 @@ describe('example queue (Valkey)', () => {
   const connection = { url: env.REDIS_URL, maxRetriesPerRequest: null };
   const queue = new Queue(queueNames.example, { connection, prefix, defaultJobOptions });
   const events = new QueueEvents(queueNames.example, { connection, prefix });
-  const workers = startWorkers({ connection, log, prefix });
+  const database = createDatabase(env.DATABASE_URL);
+  const workers = startWorkers({ connection, log, prefix, db: database.db, adapters: {} });
 
   afterAll(async () => {
     await Promise.all(workers.map((worker) => worker.close()));
+    await database.close();
     await events.close();
     await queue.obliterate({ force: true });
     await queue.close();
