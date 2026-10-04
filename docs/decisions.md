@@ -435,3 +435,74 @@ Format:
 - **Beslissing:** De API geeft van events alleen type, bron, tijdstip en samenvatting, nooit `event_contents`. `cards.get` geeft de `input` van de acties mee, omdat de gebruiker moet zien wat hij goedkeurt. Een object van een andere tenant is `NOT_FOUND` (RLS), nooit `FORBIDDEN`. Tijdlijn per pagina met `before` (op `occurred_at`).
 - **Alternatieven:** input alleen via een aparte procedure (extra round-trip voor elke kaart); bron-inhoud meesturen (persoonsgegevens in elke response, ook na het verlopen van de termijn niet beheersbaar in caches).
 - **Gevolgen:** "Toon originele mail" wordt later een aparte procedure die de bron bij de provider ophaalt.
+
+## #054 Railway als hosting voor staging
+- **Datum:** 2026-10-04
+- **Status:** geaccepteerd
+- **Context:** Er is een staging-omgeving nodig met routering op pad (#021) en een privénetwerk; vanaf sessie 4 komt er echte mail binnen.
+- **Beslissing:** Railway, regio EU West (Amsterdam), project `effectiefai`, environment `staging`. Productie wordt later een eigen environment. Opzet in docs/deployment.md.
+- **Alternatieven:** Niet uitgewerkt in deze sessie; Railway is een Amerikaans bedrijf, dus data in Amsterdam maar onder Amerikaanse jurisdictie.
+- **Gevolgen:** Heroverwegen voor productie na de pilotgesprekken over EU-jurisdictie. Geen Railway-specifieke code in de apps: Railway zit alleen in `.railway/`, de deploy-workflow, `scripts/deploy/` en Dockerfiles, zodat overstappen naar een andere host een dag werk is. Railway komt op de subverwerkerslijst.
+
+## #055 Sentry in de EU-regio voor foutmonitoring
+- **Datum:** 2026-10-04
+- **Status:** geaccepteerd
+- **Context:** Fouten in api, worker en web moeten zichtbaar worden zonder persoonsgegevens buiten de EU te zetten.
+- **Beslissing:** Sentry-organisatie in de EU-regio (Frankfurt, `de.sentry.io`), projecten voor api, worker en web. Releases = git-SHA; source maps in CI geüpload en niet publiek. `sendDefaultPii` uit, scrubben in `beforeSend`, geen request-bodies (docs/deployment.md §6).
+- **Alternatieven:** Alleen pino-logs (geen groepering, alerts of releases).
+- **Gevolgen:** De regio is onomkeerbaar. Accounts en instellingen van Sentry staan altijd in de VS. Nieuwe dependencies `@sentry/node`, `@sentry/react`, `@sentry/cli`.
+
+## #056 Domeinen: staging.effectiefai.nl, later app.effectiefai.nl
+- **Datum:** 2026-10-04
+- **Status:** geaccepteerd
+- **Context:** Web en api delen één origin (#021); elk environment heeft een eigen domein nodig.
+- **Beslissing:** Staging op `staging.effectiefai.nl`; productie later in een eigen environment, bijv. `app.effectiefai.nl`.
+- **Gevolgen:** `APP_ORIGIN` per environment. De marketingsite blijft los van het app-domein.
+
+## #057 Caddy als enige publieke service (edge)
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** #021 vraagt één reverse proxy voor `/api` en `/webhooks`; api, worker, database en Valkey mogen niet publiek zijn.
+- **Beslissing:** Service `edge` met Caddy en de gebouwde web-app (vervangt nginx in `apps/web/Dockerfile`), het enige publieke domein. `/api/*`, `/webhooks/*` en `/health` naar `api.railway.internal:3000`. Caddy zet `X-Forwarded-For` op alleen Railway's `X-Real-IP`, dus `API_TRUST_PROXY=1`. `X-Robots-Tag: noindex` en security-headers op elke response. api luistert op `::` (dual stack).
+- **Alternatieven:** Railway-domein direct op de api met CORS (strijdig met #021); nginx houden (gebruiker koos Caddy; eenvoudigere config).
+- **Gevolgen:** Het client-IP moet na de eerste deploy getest worden met vervalste headers (docs/todo.md).
+
+## #058 Deploy: images uit CI, migratieservice, vaste volgorde
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** Een pre-deploy command op de api deelt de variabelen van de api, dus de eigenaar-credentials zouden daar staan. Railway's GitHub-builds kennen geen volgorde tussen services.
+- **Beslissing:** `deploy-staging.yml` start na een groene CI-run op main en bouwt `effectief-{api,worker,migrate,edge}:<sha>` naar GHCR. Daarna via de Railway-API: `migrate` (pre-deploy draait de migraties, alleen deze service heeft `DATABASE_MIGRATION_URL`, restart `NEVER`) → wachten op `SUCCESS` → `api` + `worker` → `edge`. api en worker controleren in een eigen pre-deploy als app-rol dat het schema bij hun image past. Migraties zijn achterwaarts compatibel met de vorige release; terugdraaien = oude SHA zonder migrate, of een nieuwe migratie.
+- **Alternatieven:** Railway bouwt uit GitHub met Wait for CI (geen volgorde, Sentry-token in Railway); migratie in de start-command van de api (eigenaar-credentials in de api).
+- **Gevolgen:** Railway Pro nodig voor private images. Docker-images worden in CI gebouwd (todo uit #025 vervalt in de bouw-PR).
+
+## #059 Login-rollen in de migratiestap, wachtwoorden uit variabelen
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** #031 maakt login-rollen buiten migraties aan (`pnpm db:roles`, alleen dev en CI); op staging mag dat niet met de hand.
+- **Beslissing:** Groepsrollen en grants blijven in migraties. De migratiestap maakt na de migraties de login-rollen `effectief_app` en `effectief_auth` aan of werkt ze bij met wachtwoorden uit de gedeelde Railway-variabelen, en faalt als een login-rol superuser, BYPASSRLS of eigenaar is. De logica van `create-login-roles.ts` wordt een gedeelde functie die ook in productie mag draaien.
+- **Alternatieven:** Wachtwoorden in een migratiebestand (secret in git); rollen met de hand via `psql` (niet reproduceerbaar).
+- **Gevolgen:** Roteren = variabele wijzigen en deployen. Railway's superuser `postgres` is de eigenaar en zit alleen in `migrate`.
+
+## #060 Postgres-image: Railway's postgres-ssl:17 plus pgvector
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** Railway's standaard-Postgres heeft geen pgvector; PITR werkt via pgBackRest in `postgres-ssl`; de pgvector-templates hebben PG 16/17 zonder PITR of PG 18.
+- **Beslissing:** `infra/postgres/Dockerfile`: `FROM ghcr.io/railwayapp-templates/postgres-ssl:17` plus het PGDG-pakket voor pgvector (zelfde versie als in CI). Major tag, geen minor pin (eis van PITR).
+- **Alternatieven:** pgvector-template van de community (geen PITR); PG 18-template (wijkt af van dev en CI op PG 17).
+- **Gevolgen:** Postgres-updates via een eigen image-build. Controleren of "Enable PITR" werkt op een eigen image.
+
+## #061 Railway-config als IaC in .railway/railway.ts
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** `railway.json`/`railway.toml` zijn deprecated en worden vanaf 2026-12-01 niet meer gelezen; nieuwe services kunnen er niet meer voor kiezen.
+- **Beslissing:** Project, services, variabelen (secrets als `preserve()`), domein en volumes in `.railway/railway.ts`. Plan op PR, apply na merge (workflow `railwayapp/config`). Verschillen per environment via `ctx.isEnvironment()`.
+- **Alternatieven:** `railway.json` (stopt over twee maanden); alles via het dashboard (niet reproduceerbaar voor productie).
+- **Gevolgen:** Wat IaC niet dekt (restart policy, TCP proxy, PITR, backups, registry-credentials) staat als handmatige stap in docs/todo.md. Het `railway`-package is alleen een dev-dependency van de deploy-tooling.
+
+## #062 Afscherming staging: allowlist voor registratie en noindex
+- **Datum:** 2026-10-04
+- **Status:** voorgesteld
+- **Context:** Daniël vroeg registratie alleen voor een allowlist en noindex op alles; staging krijgt echte mail, dus zelfde beveiligingsniveau als productie.
+- **Beslissing:** Verplichte env-variabele `AUTH_SIGNUP_ALLOWLIST` (adressen, `@domein`, of expliciet `*`), afgedwongen in Better Auth `databaseHooks.user.create.before`, zodat ook uitnodigingen en OAuth later langs de check gaan. `X-Robots-Tag: noindex, nofollow` en `robots.txt` via Caddy, in elk environment. Zonder login alleen `/health`, `/webhooks` (HMAC), `/api/auth` en de statische shell.
+- **Alternatieven:** Alleen de sign-up-route blokkeren (andere routes die gebruikers maken lopen er omheen); basic auth op alles (open vraag in docs/deployment.md §9).
+- **Gevolgen:** Lokaal staat `AUTH_SIGNUP_ALLOWLIST=*` expliciet in `.env.example`.

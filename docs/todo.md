@@ -9,9 +9,20 @@ Handmatige acties buiten de code: accounts, app-installaties, verificaties, besl
 - [ ] Renovate als GitHub-app op de repo installeren (#025)
 - [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052)
 - [ ] Branch protection op `main`: CI-checks verplicht voor merge (#025)
-- [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047), actiestatus met `executing` in de domeinbegrippen (`concept → approved → executing → executed | failed`, #050), uitzondering op "queue-jobs bevatten de tenant" voor fan-out-jobs die alleen tenant-ID's lezen, zoals de retentie-sweep (#052)
-- [ ] Hosting kiezen met routering op pad (`/api`, `/webhooks` → api) en `API_TRUST_PROXY` daarop afstemmen (#021, #027)
-- [ ] Bij de hosting: login-rollen voor `app_runtime` en `auth_runtime` aanmaken met eigen wachtwoorden; de eigenaar alleen voor migraties (#031)
+- [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047), actiestatus met `executing` in de domeinbegrippen (`concept → approved → executing → executed | failed`, #050), uitzondering op "queue-jobs bevatten de tenant" voor fan-out-jobs die alleen tenant-ID's lezen, zoals de retentie-sweep (#052), hosting en foutmonitoring in de stack (Railway voor staging, Caddy als edge, Sentry EU; #054, #055, #057), Railway-config in `.railway/` en de regel "geen host-specifieke code in de apps" (#054, #061), migraties achterwaarts compatibel met de vorige release (#058)
+- [ ] Staging op Railway inrichten, in deze volgorde (docs/deployment.md, #054–#062):
+  1. Railway: Pro-plan (nodig voor private GHCR-images), 2FA aan, DPA bekijken en Railway op de subverwerkerslijst
+  2. Railway: project `effectiefai`, nieuw environment `staging` (nieuw = IPv4 + IPv6 op het privénetwerk), regio EU West (Amsterdam)
+  3. Sentry: organisatie aanmaken in de **EU-regio** (onomkeerbaar), projecten `api`, `worker`, `web`; "Prevent Storing of IP Addresses" en Data Scrubber aan; org-token met alleen release/source-map-rechten
+  4. GitHub: environment `staging` met secrets `RAILWAY_TOKEN` (project token, alleen environment staging) en `SENTRY_AUTH_TOKEN`, en variable `VITE_SENTRY_DSN` (DSN van `web`)
+  5. GitHub: classic PAT met alleen `read:packages`; in Railway als registry-credentials bij elke image-service
+  6. Railway: gedeelde variabelen `APP_DB_PASSWORD`, `AUTH_DB_PASSWORD`, `VALKEY_PASSWORD` (elk `openssl rand -hex 32`), sealed
+  7. Railway: `postgres` uit ons image (`infra/postgres`, na de bouw-PR); Networking: geen TCP proxy, geen `DATABASE_PUBLIC_URL`; **PITR direct aan** (bucket in EU), dagelijkse volume-backup aan; wachten tot `railway postgres pitr status` een base backup toont
+  8. Railway: op `api` sealed `BETTER_AUTH_SECRET` (`openssl rand -base64 32`), `AUTH_SIGNUP_ALLOWLIST` (jouw adressen), `SENTRY_DSN` (project `api`); op `worker` `SENTRY_DSN` (project `worker`); de rest staat in `.railway/railway.ts`
+  9. Railway: restart policy van `migrate` op `NEVER`; `railway config apply` voor de rest
+  10. DNS: `staging.effectiefai.nl` als CNAME naar het doel dat Railway bij de edge toont; wachten op het certificaat
+  11. Na de eerste deploy: client-IP testen met vervalste `X-Forwarded-For` en `X-Real-IP` (alleen het echte IP in de log), noindex-header controleren, `/api/*` zonder sessie geeft 401 (#057)
+  12. Vóór de eerste echte mail (sessie 4): restore-oefening met PITR en `verify-restore`, tijd noteren (docs/deployment.md §7.3)
 - [ ] Nango-account aanmaken, en hostingregio en DPA controleren (#005)
 - [ ] Cohere-account aanmaken; DPA, EU-verwerking en data-retentie van de Cohere API nagaan; Cohere op de subverwerkerslijst (#047)
 - [ ] AWS-account met Bedrock-toegang tot Claude in een EU-regio aanvragen (#007)
