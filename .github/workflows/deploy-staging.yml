@@ -111,8 +111,11 @@ jobs:
           IMAGE_TAG: ${{ env.SHA }}
         run: railway config apply --yes
 
+      # Source maps are artifact bundles (debug IDs) and create no release, so
+      # the release is created here (idempotent), then marked as deployed.
       - name: Mark the deploy in Sentry
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        # The release exists already: the source map upload created it.
-        run: pnpm exec sentry-cli deploys new --release "$SHA" --env staging
+        run: |
+          pnpm exec sentry-cli releases --project api --project worker --project web new "$SHA" --finalize
+          pnpm exec sentry-cli deploys new --release "$SHA" --env staging
