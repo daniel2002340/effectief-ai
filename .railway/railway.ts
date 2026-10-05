@@ -4,7 +4,16 @@
 // `preserve()`, so their values stay in Railway. What this DSL cannot express
 // (TCP proxy off, PITR, volume backups, registry credentials) is a manual
 // step in docs/todo.md. Nothing in apps/ or packages/ knows about Railway.
-import { database, defineRailway, image, preserve, project, redis, service } from 'railway/iac';
+import {
+  bucket,
+  database,
+  defineRailway,
+  image,
+  preserve,
+  project,
+  redis,
+  service,
+} from 'railway/iac';
 
 /** EU West (Amsterdam). */
 const region = 'europe-west4-drams3a';
@@ -98,14 +107,14 @@ export default defineRailway((ctx) => {
   });
 
   // The only public service (#057). Pre-deploy waits for the api of the same release.
-  // No `domains` yet: Railway's IaC cannot register a custom domain. It is
-  // added to this service in the dashboard (port 8080) once the service
-  // exists, and then declared here (decision #066, docs/todo.md).
+  // Railway's IaC cannot register a custom domain: it was added in the
+  // dashboard first and is declared here since (decision #066).
   const edge = service('edge', {
     source: app('edge'),
     preDeploy: 'edge-wait-for-api',
     healthcheck: '/health',
     replicas: one,
+    domains: [{ domain: origin, port: 8080 }],
     env: {
       PORT: '8080',
       API_UPSTREAM: `${railwayVar('api.RAILWAY_PRIVATE_DOMAIN')}:3000`,
@@ -127,9 +136,22 @@ export default defineRailway((ctx) => {
     },
   });
 
+  // The WAL archive of point-in-time recovery. Railway creates it when PITR is
+  // enabled in the dashboard; declared here so an apply never deletes it
+  // (decision #068). Production gets it once PITR is enabled there.
+  const pitrBucket = bucket('Postgres-PITR', { region: 'ams' });
+
   return project('effectiefai', {
     // Both exist in Railway; listing them keeps an apply from touching either one's existence.
     environments: ['staging', 'production'],
-    resources: [postgres, queue, migrate, api, worker, edge, ...(production ? [] : [verify])],
+    resources: [
+      postgres,
+      queue,
+      migrate,
+      api,
+      worker,
+      edge,
+      ...(production ? [] : [verify, pitrBucket]),
+    ],
   });
 });

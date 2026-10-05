@@ -2,7 +2,7 @@
 
 Hoe EffectiefAI draait op Railway, eerst als staging (`staging.effectiefai.nl`), later als productie in een eigen environment (bijv. `app.effectiefai.nl`).
 
-**Status:** gebouwd in sessie 3, nog niet uitgerold. Keuzes van Daniël: #054–#056; voorstellen: #057–#059, #061–#064; lokale stack en verify-job: #065.
+**Status:** gebouwd in sessie 3; staging draait sinds 2026-10-05 op https://staging.effectiefai.nl. Keuzes van Daniël: #054–#056; voorstellen: #057–#059, #061–#064; lokale stack en verify-job: #065; eerste uitrol: #066–#068.
 
 Uitgangspunt: **de app weet niet dat hij op Railway draait.** Alles wat Railway-specifiek is staat in `.railway/` en `.github/workflows/deploy-staging.yml`; de Dockerfiles en pre-deploy-scripts zijn generiek. Overstappen naar een andere host is dan nieuwe infra-config, geen appwijziging (#054).
 
@@ -27,7 +27,7 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
 | Point-in-time recovery | Postgres single en HA. WAL-archief via pgBackRest naar een Railway-bucket; wekelijkse full, dagelijkse differential, ±4 weken venster; **telt pas vanaf de eerste base backup na aanzetten**. Restore maakt een **nieuwe service** naast de oude. CLI: `railway postgres pitr enable|status|restore` ([PITR](https://docs.railway.com/volumes/point-in-time-recovery), [backups](https://docs.railway.com/guides/postgres-backups-restores), [changelog](https://railway.com/changelog/2026-09-04-postgres-in-the-railway-cli)). Niet minor-versies pinnen. | PITR aanzetten vóór de eerste data (§7). |
 | Volume-backups | Dagelijks (6 dagen), wekelijks (27 dagen), maandelijks (89 dagen); incrementeel, tegen volumeprijs ([backups](https://docs.railway.com/reference/backups)). | Daily aan als tweede laag. |
 | Databases aanmaken | Bij de eerste apply (oktober 2026) maakte Railway `postgres` en `redis` aan met zijn standaarden: `postgres-ssl:18` en regio `asia-southeast1`, ondanks `image` en `region` in `database()`/`redis()`. Een tweede `config plan` toont dan wel de correctie (image naar 17, beide naar `europe-west4`), als destructieve wijziging. | Na het aanmaken altijd controleren (`railway status --json`); corrigeren terwijl de databases leeg zijn (#067). |
-| Custom domains | `domains: [...]` staat in de IaC-referentie, maar `config plan` weigert het registreren van een nieuw domein: eerst in het dashboard toevoegen (gezien bij de eerste deploy, oktober 2026). Railway regelt TLS. | Alleen de edge krijgt een domein, eerst via het dashboard (#066). |
+| Custom domains | `domains: [...]` staat in de IaC-referentie, maar `config plan` weigert het registreren van een nieuw domein: eerst in het dashboard toevoegen (gezien bij de eerste deploy, oktober 2026). Railway regelt TLS. | Alleen de edge krijgt een domein: eerst via het dashboard, daarna in `railway.ts` (#066, #068). |
 | Client-IP | Railway's edge zet `X-Real-IP`. Over `X-Forwarded-For` spreken medewerker en community elkaar tegen (wel/niet strippen) ([forum](https://station.railway.com/questions/security-critical-questions-on-edge-prox-8fddd775)); bij verkeer via de nieuwe CDN-laag is `X-Real-IP` soms het CDN-adres (bekende bug). | Caddy normaliseert; na de eerste deploy testen (§4.3). |
 
 ---
@@ -201,7 +201,7 @@ Waarom niet Railway zelf laten bouwen vanuit GitHub: dan bouwt elke service los,
 - `.railway/railway.ts` beschrijft het project: services, bron (image), start- en pre-deploy commands, healthchecks, domein (eerst in het dashboard toegevoegd, #066), volumes, variabelen (met referenties) en replica's per regio. Secrets staan er als `preserve()` in: de waarde blijft in Railway, de naam staat in git.
 - Verschillen tussen staging en productie via `ctx.isEnvironment('production')` (`APP_ORIGIN`, `SENTRY_ENVIRONMENT`, geen `verify`).
 - De file legt ook de image-tag vast (`IMAGE_TAG`, verplicht, een volledige SHA), dus config en code worden samen uitgerold: de deploy-workflow doet plan en apply. Een plan als PR-commentaar komt later (docs/todo.md). Productie wordt een tweede environment met dezelfde file en een eigen project token.
-- Wat IaC (nog) niet dekt, staat als handmatige stap in docs/todo.md: TCP proxy van Postgres uit, PITR aan, volume-backups, registry-credentials, gedeelde variabelen.
+- Wat IaC (nog) niet dekt, staat als handmatige stap in docs/todo.md: PITR aan, volume-backups, gedeelde variabelen, een nieuw domein. Wat Railway daarbij aanmaakt (PITR-bucket, domein) komt daarna in `railway.ts`, anders wil de volgende apply het verwijderen (#068).
 - `railway` (npm-package voor de DSL, 3.12.0) is een devDependency van de root en van `apps/migrate` (voor de test); de Railway CLI (5.63.1) installeert de workflow. Geen van beide komt in een image.
 
 ### 3.3 Terugdraaien
