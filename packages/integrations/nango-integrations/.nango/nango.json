@@ -1,0 +1,120 @@
+[
+  {
+    "providerConfigKey": "gmail",
+    "actions": [
+      {
+        "type": "action",
+        "description": "The Gmail account of the connection: its address",
+        "endpoint": null,
+        "input": "ActionInput_gmail_accountinfo",
+        "name": "account-info",
+        "output": [
+          "ActionOutput_gmail_accountinfo"
+        ],
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly"
+        ],
+        "usedModels": [
+          "ActionInput_gmail_accountinfo",
+          "ActionOutput_gmail_accountinfo"
+        ],
+        "version": "1.0.0",
+        "json_schema": {
+          "definitions": {
+            "ActionInput_gmail_accountinfo": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            },
+            "ActionOutput_gmail_accountinfo": {
+              "type": "object",
+              "properties": {
+                "accountId": {
+                  "type": "string",
+                  "description": "Stable account ID; for Gmail the address. Example: \"info@bedrijf.nl\""
+                },
+                "email": {
+                  "type": "string",
+                  "description": "The address of the mailbox. Example: \"info@bedrijf.nl\""
+                }
+              },
+              "required": [
+                "accountId",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "features": []
+      }
+    ],
+    "syncs": [],
+    "onEventScripts": {
+      "post-connection-creation": [],
+      "pre-connection-deletion": [],
+      "validate-connection": [
+        "validate-connection"
+      ]
+    }
+  },
+  {
+    "providerConfigKey": "outlook",
+    "actions": [
+      {
+        "type": "action",
+        "description": "The Microsoft account of the connection: its user id and address",
+        "endpoint": null,
+        "input": "ActionInput_outlook_accountinfo",
+        "name": "account-info",
+        "output": [
+          "ActionOutput_outlook_accountinfo"
+        ],
+        "scopes": [
+          "User.Read"
+        ],
+        "usedModels": [
+          "ActionInput_outlook_accountinfo",
+          "ActionOutput_outlook_accountinfo"
+        ],
+        "version": "1.0.0",
+        "json_schema": {
+          "definitions": {
+            "ActionInput_outlook_accountinfo": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            },
+            "ActionOutput_outlook_accountinfo": {
+              "type": "object",
+              "properties": {
+                "accountId": {
+                  "type": "string",
+                  "description": "The Graph user id. Example: \"87d349ed-44d7-43e1-9a83-5f2406dee5bd\""
+                },
+                "email": {
+                  "type": "string",
+                  "description": "The address of the mailbox. Example: \"info@bedrijf.nl\""
+                }
+              },
+              "required": [
+                "accountId",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "features": []
+      }
+    ],
+    "syncs": [],
+    "onEventScripts": {
+      "post-connection-creation": [],
+      "pre-connection-deletion": [],
+      "validate-connection": [
+        "validate-connection"
+      ]
+    }
+  }
+]

@@ -8,6 +8,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/routeTree.gen.ts", "!**/migrations/meta"]
+    "includes": [
+      "**",
+      "!**/routeTree.gen.ts",
+      "!**/migrations/meta",
+      "!**/nango-integrations/.nango",
+      "!**/nango-integrations/tsconfig.json"
+    ]
   }
 }
