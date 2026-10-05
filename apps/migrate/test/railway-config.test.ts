@@ -124,8 +124,17 @@ describe('.railway/railway.ts', () => {
 
   it('keeps secrets out of the file', async () => {
     const { byName } = await render('staging');
-    for (const key of ['BETTER_AUTH_SECRET', 'AUTH_SIGNUP_ALLOWLIST', 'SENTRY_DSN']) {
+    for (const key of [
+      'BETTER_AUTH_SECRET',
+      'AUTH_SIGNUP_ALLOWLIST',
+      'SENTRY_DSN',
+      'NANGO_SECRET_KEY',
+      'NANGO_WEBHOOK_SIGNING_KEY',
+    ]) {
       expect(byName('api').variables?.[key]).toEqual({ type: 'preserve' });
+    }
+    for (const key of ['SENTRY_DSN', 'NANGO_SECRET_KEY']) {
+      expect(byName('worker').variables?.[key]).toEqual({ type: 'preserve' });
     }
   });
 

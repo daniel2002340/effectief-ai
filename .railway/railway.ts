@@ -90,6 +90,9 @@ export default defineRailway((ctx) => {
       REDIS_URL: queue.env.REDIS_URL,
       BETTER_AUTH_SECRET: preserve(),
       AUTH_SIGNUP_ALLOWLIST: preserve(),
+      // Keys of this environment's Nango environment (docs/integrations.md §7.1, §7.3).
+      NANGO_SECRET_KEY: preserve(),
+      NANGO_WEBHOOK_SIGNING_KEY: preserve(),
     },
   });
 
@@ -103,6 +106,7 @@ export default defineRailway((ctx) => {
       ...monitoring,
       DATABASE_URL: databaseUrl,
       REDIS_URL: queue.env.REDIS_URL,
+      NANGO_SECRET_KEY: preserve(),
     },
   });
 
