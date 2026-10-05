@@ -31,7 +31,6 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] Valkey onbereikbaar geeft 500; 503 `SERVICE_UNAVAILABLE` is juister (#027, `apps/api/src/plugins/rate-limit.ts`)
 - [ ] Lognoise beperken: bij Valkey-uitval logt elke herverbinding een fout (`apps/api/src/main.ts`)
 - [ ] Web-bundle (543 kB + 73 kB Better Auth-client) verkleinen, vooral Zod en de oRPC-client (`apps/web`)
-- [ ] Test `verify-restore … passes for an identical copy` faalde één keer in CI (row counts) en slaagde bij herhaling; vermoedelijk schrijven parallelle tests van andere packages in dezelfde database tussen kopie en vergelijking (`apps/migrate/test/verify-restore.test.ts`, #072)
 - [ ] Test `searchEmbeddings … uses the HNSW index` hangt af van tabelstatistieken: faalt op een lokale database na veel testruns, slaagt op een verse (`packages/db/src/knowledge/embeddings.test.ts`)
 - [ ] api-image bevat vitest, vite en drizzle-kit (±60 MB) via optionele peer-dependencies van better-auth; uit de productie-`node_modules` halen (`scripts/deploy-app.sh`, #028)
 - [ ] Twee varianten van drizzle-orm in de lockfile (met en zonder kysely-peer, via Better Auth); dedupliceren zodat de adapter dezelfde kopie gebruikt (#030)

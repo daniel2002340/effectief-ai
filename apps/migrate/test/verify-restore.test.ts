@@ -50,10 +50,18 @@ describe('verify-restore (database)', () => {
     await databases.close();
   });
 
-  /** Runs the check with `damage` applied to the restored side only. */
+  /**
+   * Runs the check with `damage` applied to the restored side only. Both sides
+   * share one exported snapshot: tests in other packages write to the same
+   * database concurrently, and without it the source and restored queries see
+   * different data.
+   */
   async function verifyWith(damage?: (client: pg.Client) => Promise<unknown>) {
-    await restored.query('begin');
+    await source.query('begin isolation level repeatable read');
+    await restored.query('begin isolation level repeatable read');
     try {
+      const { rows } = await source.query<{ id: string }>('select pg_export_snapshot() as id');
+      await restored.query(`set transaction snapshot '${rows[0]?.id}'`);
       await damage?.(restored);
       return await verifyRestore({
         source: runnerFor(source),
@@ -63,7 +71,7 @@ describe('verify-restore (database)', () => {
         samplePerTable: 10_000,
       });
     } finally {
-      await restored.query('rollback');
+      await Promise.all([restored.query('rollback'), source.query('rollback')]);
     }
   }
 
