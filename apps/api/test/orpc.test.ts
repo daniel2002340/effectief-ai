@@ -35,7 +35,9 @@ describe('procedure builders', () => {
     secret: oc.route({ method: 'GET', path: '/secret' }).output(z.string()),
     open: oc.route({ method: 'GET', path: '/open' }).output(z.string()),
   };
-  const sessions = new Map([['let-me-in', { userId: 'user-1', tenantId: 'tenant-1' }]]);
+  const sessions = new Map([
+    ['let-me-in', { userId: 'user-1', tenantId: 'tenant-1', role: 'owner' as const }],
+  ]);
   const { procedure, publicProcedure, router } = createBuilders(
     testContract,
     async (headers) => sessions.get(headers.get('cookie') ?? '') ?? null,

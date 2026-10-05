@@ -364,8 +364,8 @@ Organisatie in de **EU-regio (Frankfurt)**; die keuze kan later niet meer verand
 
 | App | SDK | Init |
 |---|---|---|
-| api | `@sentry/node` | `initMonitoring()` in `main.ts`; de error handler meldt alleen 5xx via `reportError` met request-ID en route. Geen `--import`-preload nodig: we gebruiken geen tracing, alleen fouten |
-| worker | `@sentry/node` | idem; de `failed`-handler meldt een job pas na de laatste poging, met queue, job-ID en aantal pogingen |
+| api | `@sentry/node` | `initMonitoring()` in `main.ts`; de error handler en de `onError` van oRPC melden alleen 5xx via `reportError` met request-ID en route. Geen `--import`-preload nodig: we gebruiken geen tracing, alleen fouten |
+| worker | `@sentry/node` | idem; de `failed`-handler meldt een job pas na de laatste poging, met queue, job-naam, job-ID, aantal pogingen en `tenantId` (uit de met Zod geparste payload, nooit de payload zelf) |
 | web | `@sentry/react` | in `main.tsx`; alleen fouten, geen tracing, geen Session Replay |
 
 Nieuwe dependencies: `@sentry/node` en `@sentry/react` 10.75.3, en `@sentry/cli` 3.8.0 (dev, voor uploads; root-script `sourcemaps:upload`). Bestaand alternatief bekeken: pino logt al fouten, maar zonder groepering, alerts of releases. Bewust 10.x en niet 11: `@sentry/node` 11 neemt `@sentry/bundler-plugins` (Babel, Rollup, Vite) mee als runtime-dependency, wat het api-image ±200 MB groter maakte. Met 10.75.3 is het ±46 MB. De opties en het scrubben staan één keer in `packages/shared/src/monitoring.ts` (zonder Sentry-import).
@@ -373,6 +373,7 @@ Nieuwe dependencies: `@sentry/node` en `@sentry/react` 10.75.3, en `@sentry/cli`
 ### 6.2 Releases en source maps
 
 - `release = APP_RELEASE = <git-SHA>`, gelijk voor api, worker en web. `environment = staging`.
+- `SENTRY_ENVIRONMENT` is een enum (`development | test | ci | stack | staging | production`); `SENTRY_DSN=disabled` wordt geweigerd op staging en production (#069).
 - **Upload in CI:** in de build-stage van elk Dockerfile `sentry-cli sourcemaps inject` + `upload` met `SENTRY_AUTH_TOKEN` als BuildKit-secret.
 - **Web:** Vite bouwt met `build.sourcemap: 'hidden'` (geen `sourceMappingURL` in de bundle); na upload worden alle `*.map` verwijderd vóór de laatste stage. Caddy geeft voor `*.map` bovendien 404.
 - **api/worker:** de `.map`-bestanden blijven in het image voor `--enable-source-maps` (server-side, niet publiek) en gaan ook naar Sentry.
@@ -385,7 +386,19 @@ Nieuwe dependencies: `@sentry/node` en `@sentry/react` 10.75.3, en `@sentry/cli`
 - Postgres-fouten bevatten in `detail` soms waarden (`Key (email)=(…) already exists`): `detail`, `where` en parameters worden geschrapt.
 - `user` alleen als `{ id }`; `tenantId` als tag. Geen e-mail, naam of IP.
 - In Sentry (server-side): Data Scrubber aan, "Prevent Storing of IP Addresses" aan, scrub-velden aangevuld met onze sleutels.
+- Foutmeldingen en stacks (Sentry én pino): e-mailadressen eruit, en de waarden die de fout zelf onder een gevoelige sleutel draagt, zoals `error.context.name`. Een naam die alleen in de tekst staat is niet te herkennen (#070). `extraErrorDataIntegration` zet de velden van een fout in het event, gecensureerd op sleutel.
+- Op de images bewezen in CI: `scripts/stack-redaction.sh` (`pnpm stack:redaction`) controleert de logs van api en worker na een registratie en de testfouten.
 - Test (`packages/shared/src/monitoring.test.ts`): een event met een e-mailadres en naam in body, headers, cookies, gebruiker, `detail`, breadcrumbs en context bevat na `scrubEvent` geen van die waarden meer; ID's, codes en paden blijven staan.
+
+### 6.4 Testfouten (#069)
+
+Buiten productie (`SENTRY_ENVIRONMENT` ≠ `production`), ingelogd als owner, op `/testfout`:
+
+- **Fout in de browser:** gooit `MonitoringTestError` in een event handler → project web.
+- **Fout in de api:** `POST /api/test/error` met `target: api` → 500, project api.
+- **Fout in de worker:** dezelfde procedure met `target: worker` → job in `monitoring-test`, faalt twee keer, na de laatste poging één melding in project worker.
+
+Controle na een deploy: elke fout staat in het juiste project, met release = de SHA uit `/health`, een leesbare stacktrace (bronbestanden, geen `[email]` in paden) en zonder `testfout.jansen@example.com` of `Testfout Jansen`. In productie geven route en procedure 404 en draait de queue niet.
 
 ---
 

@@ -5,12 +5,14 @@ import {
   queueNames,
   type ReportError,
   retentionJobNames,
+  tenantIdOf,
 } from '@effectief/shared';
 import { type ConnectionOptions, Queue, Worker } from 'bullmq';
 import type { Logger } from 'pino';
 import { processExampleJob } from './jobs/example.ts';
 import { processExecuteActionJob } from './jobs/execute-action.ts';
 import { processForgetEntityJob } from './jobs/forget-entity.ts';
+import { processMonitoringTestJob } from './jobs/monitoring-test.ts';
 import { processPurgeConnectionJob } from './jobs/purge-connection.ts';
 import { processRetentionSweep, processRetentionTenantJob } from './jobs/retention.ts';
 
@@ -25,6 +27,8 @@ export interface StartWorkersOptions {
   prefix?: string;
   /** Sends jobs that failed for good to monitoring; IDs only (decision #055). */
   reportError: ReportError;
+  /** Also run the job that fails on purpose; never in production (decision #069). */
+  testErrors: boolean;
 }
 
 export interface StartedWorkers {
@@ -42,6 +46,7 @@ export function startWorkers({
   adapters,
   prefix,
   reportError,
+  testErrors,
 }: StartWorkersOptions): StartedWorkers {
   const prefixOption = prefix ? { prefix } : {};
   const options = { connection, concurrency: 5, ...prefixOption };
@@ -105,6 +110,15 @@ export function startWorkers({
     { ...options, concurrency: 1 },
   );
   const workers = [example, executeAction, retention, forgetEntity, purgeConnection];
+  if (testErrors) {
+    workers.push(
+      new Worker(
+        queueNames.monitoringTest,
+        (job) => processMonitoringTestJob(job.data, { jobId: jobIdOf(job), log }),
+        options,
+      ),
+    );
+  }
 
   for (const worker of workers) {
     worker.on('failed', (job, error) => {
@@ -114,7 +128,7 @@ export function startWorkers({
       );
       // Retries are expected; only the last failed attempt is worth an alert.
       if (!job || job.attemptsMade >= (job.opts.attempts ?? 1)) {
-        reportError(error, { queue: worker.name, jobId: job?.id, attempts: job?.attemptsMade });
+        reportError(error, failedJobContext(worker.name, job));
       }
     });
     worker.on('error', (error) => {
@@ -131,5 +145,24 @@ export function startWorkers({
       await Promise.all(workers.map((worker) => worker.close()));
       await retentionQueue.close();
     },
+  };
+}
+
+/**
+ * What monitoring gets about a job that failed for good: identifiers only,
+ * never the payload (decision #055). The tenant comes from the payload as
+ * parsed by Zod; a payload without a valid one reports none.
+ */
+export function failedJobContext(
+  queue: string,
+  job: { id?: string | undefined; name: string; attemptsMade: number; data: unknown } | undefined,
+): Record<string, string | number | undefined> {
+  if (!job) return { queue };
+  return {
+    queue,
+    jobName: job.name,
+    jobId: job.id,
+    attempts: job.attemptsMade,
+    tenantId: tenantIdOf(job.data),
   };
 }

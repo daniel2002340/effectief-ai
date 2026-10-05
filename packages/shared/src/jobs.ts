@@ -11,7 +11,15 @@ export const queueNames = {
   retention: 'retention',
   forgetEntity: 'forget-entity',
   purgeConnection: 'purge-connection',
+  /** Only outside production: a job that fails on purpose (decision #069). */
+  monitoringTest: 'monitoring-test',
 } as const;
+
+/** The tenant of a job payload as parsed by Zod, or undefined without a valid one. */
+export function tenantIdOf(data: unknown): string | undefined {
+  const parsed = tenantJobSchema.safeParse(data);
+  return parsed.success ? parsed.data.tenantId : undefined;
+}
 
 export const exampleJobSchema = tenantJobSchema.extend({
   note: z.string().min(1).max(500),
@@ -61,10 +69,22 @@ export const purgeConnectionJobSchema = tenantJobSchema.extend({
 });
 export type PurgeConnectionJob = z.infer<typeof purgeConnectionJobSchema>;
 
+/** Nothing but the tenant: the job fails on purpose and needs no data. */
+export const monitoringTestJobSchema = tenantJobSchema.strict();
+export type MonitoringTestJob = z.infer<typeof monitoringTestJobSchema>;
+
 /** Retries with backoff; failed jobs are kept so no failure disappears silently. */
 export const defaultJobOptions = {
   attempts: 5,
   backoff: { type: 'exponential', delay: 1_000 },
   removeOnComplete: { age: 24 * 60 * 60, count: 1_000 },
   removeOnFail: false,
+} as const;
+
+/** Two quick attempts: the test job shows a retry and then the report after the last one. */
+export const monitoringTestJobOptions = {
+  ...defaultJobOptions,
+  attempts: 2,
+  backoff: { type: 'fixed', delay: 500 },
+  removeOnFail: { age: 24 * 60 * 60, count: 100 },
 } as const;

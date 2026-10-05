@@ -155,6 +155,9 @@ jobs:
       - name: Through the edge
         run: scripts/stack-smoke.sh
 
+      - name: Personal data redacted in the logs
+        run: scripts/stack-redaction.sh
+
       - name: RLS and role tests (verify job)
         run: $COMPOSE run --build --rm verify
 

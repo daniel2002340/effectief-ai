@@ -1,5 +1,5 @@
 import { authDatabaseEnvSchema, databaseEnvSchema } from '@effectief/db';
-import { monitoringEnvSchema } from '@effectief/shared';
+import { monitoringEnvSchema, requireMonitoring } from '@effectief/shared';
 import { z } from 'zod';
 
 const ipOrCidr = z.union([z.ipv4(), z.ipv6(), z.cidrv4(), z.cidrv6()]);
@@ -93,6 +93,7 @@ export const apiEnvSchema = z
   .refine((env) => env.NODE_ENV !== 'production' || env.APP_ORIGIN.startsWith('https://'), {
     message: 'APP_ORIGIN must use https in production (secure session cookies)',
     path: ['APP_ORIGIN'],
-  });
+  })
+  .superRefine(requireMonitoring());
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

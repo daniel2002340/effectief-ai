@@ -18,6 +18,9 @@ afterAll(() => Promise.all([redis.quit(), appDatabase.close(), authDatabase.clos
 /** Errors the API reported to monitoring, newest last; tests read and clear it. */
 export const reportedErrors: { error: unknown; context: Record<string, unknown> }[] = [];
 
+/** Monitoring-test jobs the API enqueued, newest last. */
+export const enqueuedMonitoringTests: { tenantId: string }[] = [];
+
 /** Execute jobs the API enqueued, newest last; tests read and clear it. */
 export const enqueuedExecutions: { tenantId: string; actionId: string; approvedAt: Date }[] = [];
 
@@ -39,6 +42,9 @@ export async function createTestApp(
     databases: { app: appDatabase.db, auth: authDatabase.db },
     enqueueExecuteAction: async (job) => {
       enqueuedExecutions.push(job);
+    },
+    enqueueMonitoringTest: async (job) => {
+      enqueuedMonitoringTests.push(job);
     },
     reportError: (error, context) => {
       reportedErrors.push({ error, context });

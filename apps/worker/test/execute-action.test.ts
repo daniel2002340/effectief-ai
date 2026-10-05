@@ -398,6 +398,7 @@ describe('execute-action queue (Valkey)', () => {
     db: db.app.db,
     adapters: queueFake.adapters,
     reportError: () => {},
+    testErrors: false,
   });
 
   afterAll(async () => {

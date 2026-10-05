@@ -48,6 +48,7 @@ const workers = startWorkers({
   db: db.app.db,
   adapters: {},
   reportError: () => {},
+  testErrors: false,
 });
 const queues = {
   forget: new Queue(queueNames.forgetEntity, { connection, prefix, defaultJobOptions }),

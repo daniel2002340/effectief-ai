@@ -1,7 +1,8 @@
 import { Writable } from 'node:stream';
+import { MonitoringTestError, monitoringTestData } from '@effectief/shared';
 import { pino } from 'pino';
 import { describe, expect, it } from 'vitest';
-import { loggerOptions } from '../src/logger.ts';
+import { errorSerializer, loggerOptions } from '../src/logger.ts';
 
 function capture() {
   const lines: string[] = [];
@@ -12,7 +13,11 @@ function capture() {
     },
   });
   const { serializers: _serializers, ...options } = loggerOptions({ LOG_LEVEL: 'info' });
-  return { logger: pino(options, stream), output: () => lines.join('') };
+  // Only the err serializer: req expects a Fastify request.
+  return {
+    logger: pino({ ...options, serializers: { err: errorSerializer } }, stream),
+    output: () => lines.join(''),
+  };
 }
 
 describe('logger redaction', () => {
@@ -31,5 +36,19 @@ describe('logger redaction', () => {
     const logged = output();
     expect(logged).not.toMatch(/jan@voorbeeld|Jan Jansen|Beste Jan|Offerte|Bearer abc|sid=abc/);
     expect(logged).toContain('msg_123');
+  });
+
+  it('scrubs the message and stack of a logged error, and censors its context', () => {
+    const { logger, output } = capture();
+    logger.error({ err: new MonitoringTestError('api') }, 'procedure failed');
+    const logged = output();
+    for (const leaked of Object.values(monitoringTestData)) {
+      expect(logged).not.toContain(leaked);
+    }
+    expect(JSON.parse(logged).err).toMatchObject({
+      type: 'MonitoringTestError',
+      message: 'Testfout in api voor [redacted] <[email]>',
+      context: { service: 'api', email: '[redacted]', name: '[redacted]', token: '[redacted]' },
+    });
   });
 });

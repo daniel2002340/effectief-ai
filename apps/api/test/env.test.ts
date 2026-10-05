@@ -46,6 +46,20 @@ describe('api env', () => {
     ).toBe('https://app.example');
   });
 
+  it('refuses SENTRY_DSN=disabled on staging and production, and unknown environments', () => {
+    for (const environment of ['staging', 'production']) {
+      expect(() => parseEnv(apiEnvSchema, { ...valid, SENTRY_ENVIRONMENT: environment })).toThrow(
+        /SENTRY_DSN/,
+      );
+    }
+    expect(parseEnv(apiEnvSchema, { ...valid, SENTRY_ENVIRONMENT: 'stack' }).SENTRY_DSN).toBe(
+      'disabled',
+    );
+    expect(() => parseEnv(apiEnvSchema, { ...valid, SENTRY_ENVIRONMENT: 'prodution' })).toThrow(
+      /SENTRY_ENVIRONMENT/,
+    );
+  });
+
   it('refuses a short BETTER_AUTH_SECRET', () => {
     expect(() => parseEnv(apiEnvSchema, { ...valid, BETTER_AUTH_SECRET: 'kort' })).toThrow(
       /BETTER_AUTH_SECRET/,

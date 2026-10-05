@@ -6,7 +6,12 @@ export function initMonitoring(env: MonitoringEnv): ReportError {
   if (env.SENTRY_DSN === 'disabled') return () => {};
   Sentry.init({
     ...sentryOptions(env, 'api'),
-    integrations: (defaults) => defaults.filter((integration) => integration.name !== 'Console'),
+    // ExtraErrorData puts an error's own properties (such as `context`) in the
+    // event, where beforeSend censors sensitive keys (decision #070).
+    integrations: (defaults) => [
+      ...defaults.filter((integration) => integration.name !== 'Console'),
+      Sentry.extraErrorDataIntegration({ depth: 3 }),
+    ],
   });
   return (error, context) => Sentry.captureException(error, { tags: context });
 }

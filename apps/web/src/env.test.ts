@@ -5,7 +5,7 @@ import { webEnvSchema } from './env.ts';
 const valid = {
   VITE_API_BASE_PATH: '/api',
   VITE_SENTRY_DSN: 'disabled',
-  VITE_SENTRY_ENVIRONMENT: 'staging',
+  VITE_SENTRY_ENVIRONMENT: 'development',
   VITE_APP_RELEASE: '0d5d691',
 };
 
@@ -27,5 +27,20 @@ describe('web env', () => {
       parseEnv(webEnvSchema, { ...valid, VITE_SENTRY_DSN: 'https://k@o1.ingest.de.sentry.io/3' })
         .VITE_SENTRY_DSN,
     ).toBe('https://k@o1.ingest.de.sentry.io/3');
+  });
+
+  it('refuses "disabled" on staging and production, also at build time', () => {
+    for (const environment of ['staging', 'production']) {
+      expect(() =>
+        parseEnv(webEnvSchema, { ...valid, VITE_SENTRY_ENVIRONMENT: environment }),
+      ).toThrow(/VITE_SENTRY_DSN/);
+      expect(
+        parseEnv(webEnvSchema, {
+          ...valid,
+          VITE_SENTRY_ENVIRONMENT: environment,
+          VITE_SENTRY_DSN: 'https://k@o1.ingest.de.sentry.io/3',
+        }).VITE_SENTRY_ENVIRONMENT,
+      ).toBe(environment);
+    }
   });
 });

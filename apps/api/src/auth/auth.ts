@@ -117,12 +117,16 @@ export interface SessionContext {
   userId: string;
   /** From the session's active organization; never from request input. */
   tenantId: string;
+  /** The user's role in that tenant. */
+  role: z.infer<typeof membershipRoleSchema>;
 }
+
+const membershipRoleSchema = z.enum(['owner', 'admin', 'member']);
 
 /**
  * Reads the session from the request's cookie. Returns null without a valid
  * session, without an active tenant, or when the user is no longer a member
- * of that tenant.
+ * of that tenant (or has a role we do not know).
  */
 export async function resolveSession(
   auth: Auth,
@@ -134,7 +138,7 @@ export async function resolveSession(
   if (!result || !tenantId.success) return null;
 
   const [membership] = await authDb
-    .select({ id: schema.member.id })
+    .select({ role: schema.member.role })
     .from(schema.member)
     .where(
       and(
@@ -143,7 +147,9 @@ export async function resolveSession(
       ),
     )
     .limit(1);
-  if (!membership) return null;
+  // An unknown role gets no session: deny by default.
+  const role = membershipRoleSchema.safeParse(membership?.role);
+  if (!role.success) return null;
 
-  return { userId: result.user.id, tenantId: tenantId.data };
+  return { userId: result.user.id, tenantId: tenantId.data, role: role.data };
 }

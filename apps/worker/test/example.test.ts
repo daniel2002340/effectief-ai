@@ -44,6 +44,7 @@ describe('example queue (Valkey)', () => {
     db: database.db,
     adapters: {},
     reportError: (_error, context) => reported.push(context),
+    testErrors: false,
   });
 
   afterAll(async () => {
@@ -75,7 +76,7 @@ describe('example queue (Valkey)', () => {
     // run, and the previous test's job may report late: wait for this job only.
     await vi.waitFor(() =>
       expect(reported.filter((context) => context.jobId === retried.id)).toEqual([
-        { queue: queueNames.example, jobId: retried.id, attempts: 2 },
+        { queue: queueNames.example, jobName: 'example', jobId: retried.id, attempts: 2 },
       ]),
     );
   });
