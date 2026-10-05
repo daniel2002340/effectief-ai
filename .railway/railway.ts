@@ -54,6 +54,12 @@ export default defineRailway((ctx) => {
     SENTRY_DSN: preserve(),
     SENTRY_ENVIRONMENT: production ? 'production' : 'staging',
   };
+  // The Nango environment of the same name (docs/integrations.md §7.1); the
+  // key differs per service (app-api, app-worker).
+  const nango = {
+    NANGO_ENVIRONMENT: production ? 'prod' : 'staging',
+    NANGO_SECRET_KEY: preserve(),
+  };
 
   // The only service with the owner's credentials. Its pre-deploy migrates;
   // its start command reports and exits (#058).
@@ -90,9 +96,10 @@ export default defineRailway((ctx) => {
       REDIS_URL: queue.env.REDIS_URL,
       BETTER_AUTH_SECRET: preserve(),
       AUTH_SIGNUP_ALLOWLIST: preserve(),
-      // Keys of this environment's Nango environment (docs/integrations.md §7.1, §7.3).
-      NANGO_SECRET_KEY: preserve(),
+      ...nango,
       NANGO_WEBHOOK_SIGNING_KEY: preserve(),
+      // Only local development sends webhooks elsewhere (§7.4).
+      NANGO_WEBHOOK_URL_OVERRIDE: 'none',
     },
   });
 
@@ -106,7 +113,7 @@ export default defineRailway((ctx) => {
       ...monitoring,
       DATABASE_URL: databaseUrl,
       REDIS_URL: queue.env.REDIS_URL,
-      NANGO_SECRET_KEY: preserve(),
+      ...nango,
     },
   });
 

@@ -1,4 +1,5 @@
 import { authDatabaseEnvSchema, databaseEnvSchema } from '@effectief/db';
+import { nangoEnvSchema, requireNangoEnvironment } from '@effectief/integrations/nango';
 import { monitoringEnvSchema, requireMonitoring } from '@effectief/shared';
 import { z } from 'zod';
 
@@ -89,11 +90,13 @@ export const apiEnvSchema = z
     AUTH_SIGNUP_ALLOWLIST: signupAllowlistSchema,
     REDIS_URL: z.url({ protocol: /^rediss?$/ }),
     ...monitoringEnvSchema.shape,
+    ...nangoEnvSchema.shape,
   })
   .refine((env) => env.NODE_ENV !== 'production' || env.APP_ORIGIN.startsWith('https://'), {
     message: 'APP_ORIGIN must use https in production (secure session cookies)',
     path: ['APP_ORIGIN'],
   })
-  .superRefine(requireMonitoring());
+  .superRefine(requireMonitoring())
+  .superRefine(requireNangoEnvironment());
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;

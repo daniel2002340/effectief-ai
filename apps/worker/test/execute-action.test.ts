@@ -28,7 +28,11 @@ import {
   type TestTenant,
 } from '@effectief/db/testing';
 import { AdapterError } from '@effectief/integrations';
-import { createFakeProvider, type FakeProvider } from '@effectief/integrations/testing';
+import {
+  createFakeProvider,
+  type FakeProvider,
+  nangoTestEnv,
+} from '@effectief/integrations/testing';
 import { defaultJobOptions, executeActionJobId, parseEnv, queueNames } from '@effectief/shared';
 import { Queue, QueueEvents } from 'bullmq';
 import { pino } from 'pino';
@@ -40,7 +44,7 @@ import { startWorkers } from '../src/worker.ts';
 // The action pipeline from approval to the provider (#004, decision #050),
 // against Postgres as app_runtime and a fake provider that counts effects.
 
-const env = parseEnv(workerEnvSchema, { ...process.env, LOG_LEVEL: 'silent' });
+const env = parseEnv(workerEnvSchema, { ...process.env, ...nangoTestEnv, LOG_LEVEL: 'silent' });
 const log = pino({ level: 'silent' });
 const db = openTestDatabases();
 let tenant: TestTenant;

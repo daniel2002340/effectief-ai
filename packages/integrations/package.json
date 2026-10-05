@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./testing": "./src/testing/index.ts"
+    "./testing": "./src/testing/index.ts",
+    "./nango": "./src/nango/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -18,6 +19,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@effectief/shared": "workspace:*"
+    "@effectief/shared": "workspace:*",
+    "zod": "catalog:"
   }
 }

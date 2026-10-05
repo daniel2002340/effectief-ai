@@ -1,3 +1,4 @@
+import { nangoTestEnv } from '@effectief/integrations/testing';
 import { EnvValidationError, parseEnv } from '@effectief/shared';
 import { describe, expect, it } from 'vitest';
 import { apiEnvSchema, isSignupAllowed } from '../src/env.ts';
@@ -19,6 +20,7 @@ const valid = {
   SENTRY_DSN: 'disabled',
   SENTRY_ENVIRONMENT: 'test',
   APP_RELEASE: 'dev',
+  ...nangoTestEnv,
   ...validDatabases,
 };
 

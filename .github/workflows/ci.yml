@@ -34,6 +34,11 @@ env:
   VITE_SENTRY_ENVIRONMENT: ci
   VITE_APP_RELEASE: ${{ github.sha }}
   WEB_DEV_API_TARGET: http://localhost:3000
+  # Tests mock Nango; these only let api and worker start (smoke tests).
+  NANGO_ENVIRONMENT: staging
+  NANGO_SECRET_KEY: 00000000-0000-0000-0000-000000000000
+  NANGO_WEBHOOK_SIGNING_KEY: ci-test-only-not-a-real-signing-key
+  NANGO_WEBHOOK_URL_OVERRIDE: none
 
 jobs:
   checks:

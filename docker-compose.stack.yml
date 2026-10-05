@@ -53,7 +53,13 @@ services:
     depends_on:
       valkey: { condition: service_healthy }
     environment:
-      <<: [*stack-common, &stack-monitoring { SENTRY_DSN: disabled, SENTRY_ENVIRONMENT: stack }]
+      <<:
+        - *stack-common
+        - &stack-monitoring { SENTRY_DSN: disabled, SENTRY_ENVIRONMENT: stack }
+        # Nango is never called by the stack; these only let api and worker start.
+        - &stack-nango
+          NANGO_ENVIRONMENT: staging
+          NANGO_SECRET_KEY: 00000000-0000-0000-0000-000000000000
       API_HOST: "::"
       API_PORT: "3000"
       PORT: "3000"
@@ -65,6 +71,8 @@ services:
       REDIS_URL: &stack-redis-url redis://valkey:6379/1
       BETTER_AUTH_SECRET: local-stack-only-not-a-real-secret-value
       AUTH_SIGNUP_ALLOWLIST: "@example.test"
+      NANGO_WEBHOOK_SIGNING_KEY: local-stack-not-a-real-signing-key
+      NANGO_WEBHOOK_URL_OVERRIDE: none
     command: [sh, -c, "node dist/check-schema.js && exec node --enable-source-maps dist/main.js"]
 
   worker:
@@ -75,7 +83,7 @@ services:
     depends_on:
       valkey: { condition: service_healthy }
     environment:
-      <<: [*stack-common, *stack-monitoring]
+      <<: [*stack-common, *stack-monitoring, *stack-nango]
       DATABASE_URL: *stack-database-url
       REDIS_URL: *stack-redis-url
     command: [sh, -c, "node dist/check-schema.js && exec node --enable-source-maps dist/main.js"]
