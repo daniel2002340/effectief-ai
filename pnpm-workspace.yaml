@@ -23,3 +23,5 @@ onlyBuiltDependencies:
 # Optional native speed-up for BullMQ's msgpack; the bundled worker uses the JS fallback.
 ignoredBuiltDependencies:
   - msgpackr-extract
+  # Its binary comes from a platform package (optionalDependencies); the postinstall is a fallback download.
+  - "@sentry/cli"

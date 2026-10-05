@@ -18,13 +18,20 @@
     "db:migrate": "pnpm --filter @effectief/db db:migrate",
     "db:roles": "pnpm --filter @effectief/db db:roles",
     "prepare": "lefthook install",
-    "test:e2e": "turbo run test:e2e"
+    "test:e2e": "turbo run test:e2e",
+    "stack:up": "STACK_RELEASE=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f docker-compose.stack.yml up --build --detach --wait",
+    "stack:smoke": "scripts/stack-smoke.sh",
+    "stack:verify": "STACK_RELEASE=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f docker-compose.stack.yml run --build --rm verify",
+    "stack:down": "STACK_RELEASE=unused docker compose -f docker-compose.yml -f docker-compose.stack.yml rm --stop --force stack-database migrate api worker edge verify",
+    "sourcemaps:upload": "sentry-cli sourcemaps inject \"$SOURCEMAPS_DIR\" && sentry-cli sourcemaps upload --release \"$APP_RELEASE\" \"$SOURCEMAPS_DIR\""
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@sentry/cli": "3.8.0",
     "@types/node": "catalog:",
     "knip": "6.39.0",
     "lefthook": "2.1.16",
+    "railway": "3.12.0",
     "turbo": "2.11.7",
     "typescript": "catalog:"
   }

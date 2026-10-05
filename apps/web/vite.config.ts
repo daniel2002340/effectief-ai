@@ -28,6 +28,9 @@ export default defineConfig(({ command, mode }) => {
       proxy: devEnv ? { [env.VITE_API_BASE_PATH]: devEnv.WEB_DEV_API_TARGET } : {},
     },
     preview: { port: 4180, strictPort: true },
+    // Maps for Sentry only: no sourceMappingURL in the bundle, and the .map files
+    // are uploaded and deleted before the edge image is built (decision #055).
+    build: { sourcemap: 'hidden' },
   };
 });
 

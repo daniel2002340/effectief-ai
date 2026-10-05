@@ -22,7 +22,12 @@
         "API_PORT",
         "API_TRUST_PROXY",
         "APP_ORIGIN",
-        "BETTER_AUTH_SECRET"
+        "BETTER_AUTH_SECRET",
+        "AUTH_SIGNUP_ALLOWLIST",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "APP_RELEASE",
+        "IMAGE_TAG"
       ]
     },
     "test:e2e": {

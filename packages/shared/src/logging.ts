@@ -2,7 +2,7 @@
  * Keys whose values are personal data or secrets. Loggers in api and worker
  * censor them wherever they appear in the first three levels of a log object.
  */
-const sensitiveKeys = [
+export const sensitiveKeys = [
   'email',
   'name',
   'firstName',

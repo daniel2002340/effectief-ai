@@ -121,7 +121,7 @@ describe('without Valkey', () => {
     try {
       const health = await app.inject({ method: 'GET', url: '/health' });
       expect(health.statusCode).toBe(200);
-      expect(health.json()).toEqual({ status: 'ok' });
+      expect(health.json()).toMatchObject({ status: 'ok' });
 
       const limited = await app.inject({ method: 'GET', url: '/api/system/status' });
       expect(limited.statusCode).toBe(500);

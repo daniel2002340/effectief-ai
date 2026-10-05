@@ -1,6 +1,11 @@
 import type { Database } from '@effectief/db';
 import type { AdapterRegistry } from '@effectief/integrations';
-import { defaultJobOptions, queueNames, retentionJobNames } from '@effectief/shared';
+import {
+  defaultJobOptions,
+  queueNames,
+  type ReportError,
+  retentionJobNames,
+} from '@effectief/shared';
 import { type ConnectionOptions, Queue, Worker } from 'bullmq';
 import type { Logger } from 'pino';
 import { processExampleJob } from './jobs/example.ts';
@@ -18,6 +23,8 @@ export interface StartWorkersOptions {
   adapters: AdapterRegistry;
   /** Key prefix in Valkey; tests use their own to stay isolated. */
   prefix?: string;
+  /** Sends jobs that failed for good to monitoring; IDs only (decision #055). */
+  reportError: ReportError;
 }
 
 export interface StartedWorkers {
@@ -34,6 +41,7 @@ export function startWorkers({
   db,
   adapters,
   prefix,
+  reportError,
 }: StartWorkersOptions): StartedWorkers {
   const prefixOption = prefix ? { prefix } : {};
   const options = { connection, concurrency: 5, ...prefixOption };
@@ -104,8 +112,15 @@ export function startWorkers({
         { queue: worker.name, jobId: job?.id, attempt: job?.attemptsMade, err: error },
         'job failed',
       );
+      // Retries are expected; only the last failed attempt is worth an alert.
+      if (!job || job.attemptsMade >= (job.opts.attempts ?? 1)) {
+        reportError(error, { queue: worker.name, jobId: job?.id, attempts: job?.attemptsMade });
+      }
     });
-    worker.on('error', (error) => log.error({ queue: worker.name, err: error }, 'worker error'));
+    worker.on('error', (error) => {
+      log.error({ queue: worker.name, err: error }, 'worker error');
+      reportError(error, { queue: worker.name });
+    });
   }
 
   return {

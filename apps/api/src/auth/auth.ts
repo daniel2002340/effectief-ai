@@ -1,15 +1,16 @@
 import { and, asc, type Database, eq, schema, withTenant } from '@effectief/db';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { APIError } from 'better-auth/api';
 import { organization } from 'better-auth/plugins';
 import type { FastifyBaseLogger } from 'fastify';
 import { z } from 'zod';
-import type { ApiEnv } from '../env.ts';
+import { type ApiEnv, isSignupAllowed } from '../env.ts';
 
 export const AUTH_BASE_PATH = '/api/auth';
 
 export interface AuthDependencies {
-  env: Pick<ApiEnv, 'NODE_ENV' | 'APP_ORIGIN' | 'BETTER_AUTH_SECRET'>;
+  env: Pick<ApiEnv, 'NODE_ENV' | 'APP_ORIGIN' | 'BETTER_AUTH_SECRET' | 'AUTH_SIGNUP_ALLOWLIST'>;
   /** Connection as auth_runtime: the auth tables only (decision #031). */
   authDb: Database;
   /** Connection as app_runtime, for tenant tables via withTenant(). */
@@ -63,6 +64,20 @@ export function createAuth({ env, authDb, appDb, log }: AuthDependencies) {
       log: (level, message) => log[level]({ source: 'better-auth' }, message),
     },
     databaseHooks: {
+      user: {
+        create: {
+          // Every way a user comes into existence passes here, not only the
+          // sign-up endpoint (decision #062). The message does not reveal
+          // which addresses are allowed.
+          before: async (user) => {
+            if (!isSignupAllowed(env.AUTH_SIGNUP_ALLOWLIST, user.email)) {
+              throw new APIError('FORBIDDEN', {
+                message: 'Registreren is met dit e-mailadres nog niet mogelijk.',
+              });
+            }
+          },
+        },
+      },
       session: {
         create: {
           // Start every session in a tenant: the user's oldest membership.

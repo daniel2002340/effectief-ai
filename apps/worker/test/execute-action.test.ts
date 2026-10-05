@@ -397,6 +397,7 @@ describe('execute-action queue (Valkey)', () => {
     prefix,
     db: db.app.db,
     adapters: queueFake.adapters,
+    reportError: () => {},
   });
 
   afterAll(async () => {

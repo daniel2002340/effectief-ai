@@ -25,7 +25,14 @@ env:
   API_TRUST_PROXY: "false"
   APP_ORIGIN: http://localhost:5180
   BETTER_AUTH_SECRET: ci-test-only-not-a-real-secret-value
+  AUTH_SIGNUP_ALLOWLIST: "*"
+  SENTRY_DSN: disabled
+  SENTRY_ENVIRONMENT: ci
+  APP_RELEASE: ${{ github.sha }}
   VITE_API_BASE_PATH: /api
+  VITE_SENTRY_DSN: disabled
+  VITE_SENTRY_ENVIRONMENT: ci
+  VITE_APP_RELEASE: ${{ github.sha }}
   WEB_DEV_API_TARGET: http://localhost:3000
 
 jobs:
@@ -70,12 +77,12 @@ jobs:
       - name: Unused code (knip)
         run: pnpm knip
 
-      - name: Migrations apply
-        run: pnpm db:migrate
-
-      # Login roles for the app and Better Auth; tests run as these, never as the owner (#026, #031).
-      - name: Database login roles
-        run: pnpm db:roles
+      # The same migration step as a deploy (#058, #059): migrations as owner, then the
+      # login roles for the app and Better Auth. Tests run as these, never as the owner.
+      - name: Migrations and login roles
+        run: pnpm --filter @effectief/migrate start
+        env:
+          MIGRATIONS_DIR: ${{ github.workspace }}/packages/db/migrations
 
       - name: Migration drift
         run: |
@@ -101,6 +108,7 @@ jobs:
       - name: Startup smoke test (api)
         working-directory: ${{ runner.temp }}/api
         run: |
+          node dist/check-schema.js
           node dist/main.js > api.log 2>&1 &
           if ! curl --silent --fail --retry 20 --retry-delay 1 --retry-all-errors \
             "http://127.0.0.1:${API_PORT}/health"; then
@@ -128,6 +136,37 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report
           if-no-files-found: ignore
+
+  stack:
+    name: Images and local stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # The images of the deploy (#058), without pushing and without a Sentry upload,
+    # started like staging: pre-deploys, roles, edge in front (#065).
+    env:
+      STACK_RELEASE: ${{ github.sha }}
+      COMPOSE: docker compose -f docker-compose.yml -f docker-compose.stack.yml
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build and start
+        run: $COMPOSE up --build --detach --wait
+
+      - name: Through the edge
+        run: scripts/stack-smoke.sh
+
+      - name: RLS and role tests (verify job)
+        run: $COMPOSE run --build --rm verify
+
+      - name: Edge refuses to start without its variables
+        run: |
+          if docker run --rm -e PORT=8080 effectief-edge:stack; then
+            echo "::error::edge started without API_UPSTREAM"; exit 1
+          fi
+
+      - name: Logs
+        if: failure()
+        run: $COMPOSE logs --no-color
 
   gitleaks:
     name: Secret scan

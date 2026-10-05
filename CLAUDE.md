@@ -37,6 +37,7 @@ packages/ai            Prompts, classifiers, models.ts (enige plek voor model-ID
 packages/config        Gedeelde tsconfig en Biome-config
 docs/decisions.md      Architectuurbeslissingen (zie hieronder)
 docs/data-model.md     Beschrijving van het schema: tabellen, rechten, retentie, gegevensstromen
+docs/deployment.md     Hosting en deploy: services, netwerk, rollen, secrets, back-ups, kosten
 ```
 
 ## Commando's

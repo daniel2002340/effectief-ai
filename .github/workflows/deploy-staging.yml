@@ -1,0 +1,118 @@
+name: Deploy staging
+
+# Only after CI passed on a push to main, for exactly that commit (decision #058).
+# Manually: roll out an earlier commit whose images exist (rollback, docs/deployment.md §3.3).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Volledige commit-SHA om uit te rollen
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+# Deploys never overlap; a newer one waits instead of cancelling a running one.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build images and apply Railway config
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: staging
+    env:
+      SHA: ${{ inputs.sha || github.event.workflow_run.head_sha }}
+      REGISTRY: ghcr.io/daniel2002340
+      SENTRY_URL: https://de.sentry.io/
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+    steps:
+      - name: Check commit
+        run: |
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Not a full commit SHA: $SHA"; exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # One build per commit; a rollback reuses the images that already exist.
+      # Source maps go to Sentry from the build stage; the token is a BuildKit secret.
+      - name: Build and push images
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+        run: |
+          set -eu
+          build() { # <image name> <Dockerfile app dir> <Sentry project or -> [build target]
+            image="$REGISTRY/effectief-$1:$SHA"
+            if docker manifest inspect "$image" > /dev/null 2>&1; then
+              echo "$image exists"; return
+            fi
+            upload=true; [ "$3" = - ] && upload=false
+            docker build -f "apps/$2/Dockerfile" ${4:+--target "$4"} \
+              --secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
+              --build-arg APP_RELEASE="$SHA" \
+              --build-arg SENTRY_UPLOAD="$upload" \
+              --build-arg SENTRY_URL --build-arg SENTRY_ORG \
+              --build-arg SENTRY_PROJECT="$3" \
+              --build-arg VITE_API_BASE_PATH=/api \
+              --build-arg VITE_SENTRY_DSN \
+              --build-arg VITE_SENTRY_ENVIRONMENT=staging \
+              --build-arg VITE_APP_RELEASE="$SHA" \
+              -t "$image" .
+            docker push "$image"
+          }
+          build migrate migrate -
+          build verify migrate - verify
+          build api api api
+          build worker worker worker
+          build edge web web
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # The IaC program imports `railway/iac` (root devDependency).
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli@5.63.1
+
+      # One apply for all services. The order (migrate → api/worker → edge) is
+      # enforced by their pre-deploy commands, not by this workflow (decision #064).
+      # No --confirm-destructive: an apply that would delete something fails.
+      - name: Plan
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          IMAGE_TAG: ${{ env.SHA }}
+        run: railway config plan
+
+      - name: Apply
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          IMAGE_TAG: ${{ env.SHA }}
+        run: railway config apply --yes
+
+      - name: Mark the deploy in Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        # The release exists already: the source map upload created it.
+        run: pnpm exec sentry-cli deploys new --release "$SHA" --env staging

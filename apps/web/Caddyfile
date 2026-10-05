@@ -1,0 +1,62 @@
+# The edge (decision #057): the only public service. Serves the built web app
+# and forwards /api, /webhooks and /health to the api over the private network,
+# so browser and api share one origin (decision #021). TLS ends at the host's
+# edge in front of this. PORT and API_UPSTREAM are checked by the entrypoint.
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:{$PORT} {
+	# On every response, also the api's; deferred so upstream headers cannot undo it.
+	header {
+		defer
+		X-Robots-Tag "noindex, nofollow"
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+		-Via
+	}
+
+	@backend path /api /api/* /webhooks /webhooks/* /health
+	handle @backend {
+		reverse_proxy {$API_UPSTREAM} {
+			# Exactly one value, the client IP the host's edge put in X-Real-IP
+			# (it overwrites what the client sends). The api trusts one hop:
+			# API_TRUST_PROXY=1 (decisions #027, #057).
+			header_up X-Forwarded-For {http.request.header.X-Real-IP}
+			header_up X-Forwarded-Proto https
+			header_up -X-Real-IP
+		}
+	}
+
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		respond "User-agent: *
+Disallow: /
+"
+	}
+
+	# Source maps are deleted from the image; this is a second lock (decision #055).
+	@sourcemaps path *.map
+	handle @sourcemaps {
+		respond 404
+	}
+
+	handle {
+		root * /srv
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+			X-Frame-Options "DENY"
+		}
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@shell not path /assets/*
+		header @shell Cache-Control "no-cache"
+		# Single-page app: unknown paths serve index.html.
+		try_files {path} /index.html
+		file_server
+	}
+}
