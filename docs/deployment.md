@@ -314,7 +314,7 @@ Pad van een request: browser → Railway's edge (TLS) → Caddy → api.
 - Vanuit de api is er dan **één proxy-hop** (Caddy, het socket-adres) en de meest rechtse (enige) `X-Forwarded-For`-waarde is de client. **`API_TRUST_PROXY=1`.**
 - `2` zou fout zijn: dan leest Fastify een waarde verder naar links, en die kan van de client komen.
 - Een vaste lijst proxy-IP's kan niet: Caddy's privé-adres ligt niet vast.
-- **Na de eerste deploy testen** (in docs/todo.md): een request met een vervalste `X-Forwarded-For` en `X-Real-IP`; in de log moet het echte IP staan. Ook controleren of de CDN-bug (`X-Real-IP` = CDN-adres) ons raakt; zo ja, dan delen alle gebruikers achter dat CDN-adres één rate-limit-teller.
+- **Getest op 2026-10-05** tegen staging, via `x-ratelimit-remaining` (de teller van de sleutel `ratelimit:api:<request.ip>`): requests met vervalste `X-Forwarded-For`, `X-Real-IP`, een keten van beide en `Forwarded` tellen allemaal af op één teller met de gewone requests (299 → 293). Een client kiest zijn sleutel dus niet zelf. IPv4 en IPv6 van dezelfde machine hebben elk een eigen teller, en een nieuw venster begint op 299: geen gedeeld proxy- of CDN-adres als sleutel. De sleutels in Redis zelf zijn niet bekeken (daarvoor is `railway ssh` met een gekoppelde SSH-sleutel nodig).
 
 ---
 
