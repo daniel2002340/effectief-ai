@@ -554,3 +554,19 @@ Format:
 - **Beslissing:** Alles wat Railway of het dashboard aanmaakt en moet blijven (PITR-bucket, domein) komt na het aanmaken in `railway.ts`, gecontroleerd met een `config plan` zonder destroy. Bucket voorlopig alleen voor staging; productie krijgt hem na het aanzetten van PITR daar.
 - **Alternatieven:** applies met `--confirm-destructive` (zou de WAL-archieven verwijderen).
 - **Gevolgen:** Een handmatige wijziging in het dashboard blokkeert de volgende deploy tot ze in de file staat; dat is bedoeld.
+
+## #069 Testfouten buiten productie, geschakeld op SENTRY_ENVIRONMENT
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** Sentry moet per app aantoonbaar werken op staging (juist project, release, leesbare stacktrace, geen persoonsgegevens), zonder in productie een knop te hebben die fouten maakt.
+- **Beslissing:** `SENTRY_ENVIRONMENT` wordt een enum (`development | test | ci | stack | staging | production`); `testErrorsEnabled()` is waar behalve in `production`, nooit op basis van een hostnaam. `SENTRY_DSN=disabled` mag alleen buiten staging en production (check in api-, worker- en web-schema, ook bij de build). Testfouten: oRPC `POST /api/test/error` (apart `testContract`, alleen voor owner, `target: api | worker`), queue `monitoring-test` (faalt altijd, 2 pogingen) en pagina `/testfout` in web. Alle drie gooien `MonitoringTestError` met een nep-adres en nep-naam in message en context.
+- **Alternatieven:** een aparte variabele `TEST_ERRORS` (nog een schakelaar die in productie verkeerd kan staan); de procedure in het gewone contract met een 404-handler (dan bestaat ze wel in productie).
+- **Gevolgen:** In productie zit de procedure niet in de router (404), start de worker de queue niet en geeft de route `notFound`; tests bewijzen dat. De sessie kent nu de rol (`owner | admin | member`); een onbekende rol geeft geen sessie.
+
+## #070 Foutteksten schrappen op de eigen data van de fout; oRPC-fouten naar Sentry
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** Een naam in een foutmelding is niet te herkennen; pino redigeerde alleen op sleutel, dus `err.message` en `err.stack` kwamen ongemoeid in de logs. Fouten uit oRPC-procedures bereikten Sentry niet: de handler vangt ze zelf af.
+- **Beslissing:** `scrubErrorText()` in packages/shared vervangt e-mailadressen en haalt de waarden weg die de fout zelf onder gevoelige sleutels draagt (ook in `cause`). Gebruikt in `beforeSend` (via `hint.originalException`) en in een `err`-serializer van pino in api en worker. `extraErrorDataIntegration` zet de eigen velden van een fout in het event, waar de sleutels worden gecensureerd. De oRPC-`onError` meldt 5xx met de oorspronkelijke fout. CI bewijst het op de images met `scripts/stack-redaction.sh`.
+- **Alternatieven:** de foutmelding nooit meesturen (onleesbare issues); namen herkennen met een heuristiek (onbetrouwbaar, verminkt tekst).
+- **Gevolgen:** Een naam die alleen in de tekst staat en nergens in de data van de fout, blijft zichtbaar. Wie een fout met persoonsgegevens gooit, zet die gegevens dus ook in een veld met een gevoelige sleutel. De e-mailregex slaat paden met `/` over, zodat stackframes leesbaar blijven.

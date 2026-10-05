@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@effectief/db';
-import type { ReportError } from '@effectief/shared';
+import { type ReportError, testErrorsEnabled } from '@effectief/shared';
 import helmet from '@fastify/helmet';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
@@ -11,6 +11,7 @@ import { loggerOptions } from './logger.ts';
 import type { EnqueueExecuteAction } from './orpc/actions.ts';
 import { orpcRoutes } from './orpc/plugin.ts';
 import { createRouter } from './orpc/router.ts';
+import type { EnqueueMonitoringTest } from './orpc/test-errors.ts';
 import { errorHandler } from './plugins/error-handler.ts';
 import { jsonOnly } from './plugins/json-only.ts';
 import { rateLimit } from './plugins/rate-limit.ts';
@@ -30,6 +31,8 @@ export interface AppDependencies {
   };
   /** Puts an approved action on the execute queue (BullMQ in main.ts). */
   enqueueExecuteAction: EnqueueExecuteAction;
+  /** Puts a failing test job on its queue; only used outside production (decision #069). */
+  enqueueMonitoringTest: EnqueueMonitoringTest;
   /** Sends unexpected (5xx) errors to monitoring; IDs only. */
   reportError: ReportError;
   /** Requests per IP per minute; lowered in tests. */
@@ -46,6 +49,7 @@ export async function buildApp({
   redis,
   databases,
   enqueueExecuteAction,
+  enqueueMonitoringTest,
   reportError,
   rateLimitMax = 300,
   loginRateLimit = { max: 10, timeWindow: '15 minutes' },
@@ -72,11 +76,14 @@ export async function buildApp({
     appDb: databases.app,
     resolveSession: (headers) => resolveSession(auth, databases.auth, headers),
     enqueueExecuteAction,
+    enqueueMonitoringTest: testErrorsEnabled(env.SENTRY_ENVIRONMENT)
+      ? enqueueMonitoringTest
+      : undefined,
   });
 
   await app.register(healthRoutes, { release: env.APP_RELEASE });
   await app.register(authRoutes, { auth, env, loginRateLimit });
-  await app.register(orpcRoutes, { router });
+  await app.register(orpcRoutes, { router, reportError });
   await registerWebhookRoutes(app, webhooks);
 
   return app;

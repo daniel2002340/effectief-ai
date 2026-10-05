@@ -6,6 +6,7 @@
 #
 #   pnpm stack:up        build the images of this commit and start everything
 #   pnpm stack:verify    the RLS and role tests, as the verify job runs them
+#   pnpm stack:redaction no personal data in the logs of the images (decision #070)
 #   pnpm stack:down
 #
 # Pre-deploy commands run before the start command, as on the host. There is

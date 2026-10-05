@@ -1,7 +1,7 @@
-import type { ErrorResponse } from '@effectief/shared';
+import type { ErrorResponse, ReportError } from '@effectief/shared';
 import { ValidationError } from '@orpc/contract';
 import { OpenAPIHandler } from '@orpc/openapi/fastify';
-import { type ORPCError, onError } from '@orpc/server';
+import { ORPCError, onError } from '@orpc/server';
 import type { FastifyInstance } from 'fastify';
 import { AppError, codeForStatus, errorBody } from '../errors.ts';
 import { toFetchHeaders } from '../http.ts';
@@ -25,7 +25,7 @@ function isErrorResponse(body: unknown): body is ErrorResponse {
 
 export async function orpcRoutes(
   app: FastifyInstance,
-  { router }: { router: ApiRouter },
+  { router, reportError }: { router: ApiRouter; reportError: ReportError },
 ): Promise<void> {
   const handler = new OpenAPIHandler<ApiContext>(router, {
     customErrorResponseBodyEncoder: encodeError,
@@ -39,9 +39,15 @@ export async function orpcRoutes(
       },
     ],
     interceptors: [
-      onError((error, { context }) => {
+      // The handler answers errors itself, so the Fastify error handler never
+      // sees them: unexpected ones are logged and reported here (decision #055).
+      onError((error, { context, request }) => {
         const status = (error as { status?: number }).status ?? 500;
-        if (status >= 500) context.log.error({ err: error }, 'procedure failed');
+        if (status < 500) return;
+        // oRPC wraps an unexpected error; report the original, with its own stack.
+        const original = error instanceof ORPCError && error.cause ? error.cause : error;
+        context.log.error({ err: original }, 'procedure failed');
+        reportError(original, { requestId: context.requestId, route: request.url.pathname });
       }),
     ],
   });

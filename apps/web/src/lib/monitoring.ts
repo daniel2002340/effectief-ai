@@ -14,6 +14,11 @@ export function initMonitoring(): void {
       },
       'web',
     ),
-    integrations: (defaults) => defaults.filter((integration) => integration.name !== 'Console'),
+    // ExtraErrorData puts an error's own properties (such as `context`) in the
+    // event, where beforeSend censors sensitive keys (decision #070).
+    integrations: (defaults) => [
+      ...defaults.filter((integration) => integration.name !== 'Console'),
+      Sentry.extraErrorDataIntegration({ depth: 3 }),
+    ],
   });
 }

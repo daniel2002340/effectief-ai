@@ -1,6 +1,6 @@
 import { createDatabase } from '@effectief/db';
 import type { AdapterRegistry } from '@effectief/integrations';
-import { parseEnv } from '@effectief/shared';
+import { parseEnv, testErrorsEnabled } from '@effectief/shared';
 import { workerEnvSchema } from './env.ts';
 import { scheduleRetention } from './jobs/retention.ts';
 import { createLogger } from './logger.ts';
@@ -24,6 +24,7 @@ const started = startWorkers({
   db: database.db,
   adapters,
   reportError,
+  testErrors: testErrorsEnabled(env.SENTRY_ENVIRONMENT),
 });
 await scheduleRetention(started.retentionQueue);
 log.info({ queues: started.workers.map((worker) => worker.name) }, 'worker started');

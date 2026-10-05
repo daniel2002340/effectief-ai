@@ -5,12 +5,15 @@ import { actionHandlers, type EnqueueExecuteAction } from './actions.ts';
 import { createBuilders, type SessionResolver } from './builders.ts';
 import { cardHandlers } from './cards.ts';
 import { entityHandlers } from './entities.ts';
+import { createTestRouter, type EnqueueMonitoringTest } from './test-errors.ts';
 
 export interface RouterDependencies {
   /** Connection as app_runtime; customer data only via withTenant(). */
   appDb: Database;
   resolveSession: SessionResolver;
   enqueueExecuteAction: EnqueueExecuteAction;
+  /** Only outside production; without it the test procedures do not exist (decision #069). */
+  enqueueMonitoringTest: EnqueueMonitoringTest | undefined;
 }
 
 /** Reads the tenant within its RLS scope: organization and settings of `tenantId` only. */
@@ -28,13 +31,18 @@ async function readCurrentTenant(appDb: Database, tenantId: string): Promise<Cur
   return currentTenantSchema.parse(row);
 }
 
-export function createRouter({ appDb, resolveSession, enqueueExecuteAction }: RouterDependencies) {
+export function createRouter({
+  appDb,
+  resolveSession,
+  enqueueExecuteAction,
+  enqueueMonitoringTest,
+}: RouterDependencies) {
   const { procedure, publicProcedure, router } = createBuilders(contract, resolveSession);
   const actions = actionHandlers({ appDb, enqueueExecuteAction });
   const cards = cardHandlers({ appDb });
   const entities = entityHandlers({ appDb });
 
-  return router({
+  const main = router({
     system: {
       status: publicProcedure.system.status.handler(() => ({ status: 'ok' as const })),
     },
@@ -69,6 +77,8 @@ export function createRouter({ appDb, resolveSession, enqueueExecuteAction }: Ro
       get: procedure.entities.get.handler(({ context, input }) => entities.get(context, input)),
     },
   });
+  if (!enqueueMonitoringTest) return main;
+  return { ...main, ...createTestRouter(resolveSession, enqueueMonitoringTest) };
 }
 
 export type ApiRouter = ReturnType<typeof createRouter>;

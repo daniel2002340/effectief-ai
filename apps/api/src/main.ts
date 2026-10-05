@@ -3,8 +3,11 @@ import {
   defaultJobOptions,
   type ExecuteActionJob,
   executeActionJobId,
+  type MonitoringTestJob,
+  monitoringTestJobOptions,
   parseEnv,
   queueNames,
+  testErrorsEnabled,
 } from '@effectief/shared';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
@@ -20,10 +23,18 @@ const reportError = initMonitoring(env);
 const redis = new Redis(env.REDIS_URL, { family: 0, maxRetriesPerRequest: 1, lazyConnect: true });
 const appDatabase = createDatabase(env.DATABASE_URL);
 const authDatabase = createDatabase(env.DATABASE_AUTH_URL);
+const queueConnection = { url: env.REDIS_URL, family: 0, maxRetriesPerRequest: 1 };
 const executeQueue = new Queue<ExecuteActionJob>(queueNames.executeAction, {
-  connection: { url: env.REDIS_URL, family: 0, maxRetriesPerRequest: 1 },
+  connection: queueConnection,
   defaultJobOptions,
 });
+// Not in production: there the test procedure does not exist (decision #069).
+const testQueue = testErrorsEnabled(env.SENTRY_ENVIRONMENT)
+  ? new Queue<MonitoringTestJob>(queueNames.monitoringTest, {
+      connection: queueConnection,
+      defaultJobOptions: monitoringTestJobOptions,
+    })
+  : undefined;
 const app = await buildApp({
   env,
   redis,
@@ -35,6 +46,10 @@ const app = await buildApp({
       { tenantId, actionId },
       { jobId: executeActionJobId(actionId, approvedAt) },
     );
+  },
+  enqueueMonitoringTest: async (job) => {
+    if (!testQueue) throw new Error('Test errors are disabled in production');
+    await testQueue.add('fail', job);
   },
 });
 redis.on('error', (error) => app.log.error({ err: error }, 'valkey connection error'));
@@ -51,6 +66,7 @@ async function shutdown(signal: string) {
   await Promise.all([
     redis.quit(),
     executeQueue.close(),
+    testQueue?.close(),
     appDatabase.close(),
     authDatabase.close(),
     closeMonitoring(),

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InloggenRouteImport } from './routes/inloggen'
 import { Route as RegistrerenRouteImport } from './routes/registreren'
+import { Route as TestfoutRouteImport } from './routes/testfout'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const RegistrerenRoute = RegistrerenRouteImport.update({
   path: '/registreren',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TestfoutRoute = TestfoutRouteImport.update({
+  id: '/testfout',
+  path: '/testfout',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/inloggen': typeof InloggenRoute
   '/registreren': typeof RegistrerenRoute
+  '/testfout': typeof TestfoutRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/inloggen': typeof InloggenRoute
   '/registreren': typeof RegistrerenRoute
+  '/testfout': typeof TestfoutRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/inloggen': typeof InloggenRoute
   '/registreren': typeof RegistrerenRoute
+  '/testfout': typeof TestfoutRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inloggen' | '/registreren'
+  fullPaths: '/' | '/inloggen' | '/registreren' | '/testfout'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inloggen' | '/registreren'
-  id: '__root__' | '/' | '/inloggen' | '/registreren'
+  to: '/' | '/inloggen' | '/registreren' | '/testfout'
+  id: '__root__' | '/' | '/inloggen' | '/registreren' | '/testfout'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   InloggenRoute: typeof InloggenRoute
   RegistrerenRoute: typeof RegistrerenRoute
+  TestfoutRoute: typeof TestfoutRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegistrerenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/testfout': {
+      id: '/testfout'
+      path: '/testfout'
+      fullPath: '/testfout'
+      preLoaderRoute: typeof TestfoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InloggenRoute: InloggenRoute,
   RegistrerenRoute: RegistrerenRoute,
+  TestfoutRoute: TestfoutRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
