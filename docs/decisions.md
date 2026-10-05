@@ -538,3 +538,11 @@ Format:
 - **Beslissing:** `edge` zonder `domains` uitrollen; Daniël voegt `staging.effectiefai.nl` (poort 8080) in het dashboard toe zodra `edge` bestaat; daarna komt het domein terug in `railway.ts`, zodat het vastligt. Zelfde volgorde voor productie.
 - **Alternatieven:** de `edge`-service met de hand aanmaken (onduidelijk of IaC hem dan overneemt).
 - **Gevolgen:** Tot stap 2 test `railway-config.test.ts` dat geen service publiek is vanuit de file. Of een bestaand domein in de file wordt geaccepteerd, blijkt bij de volgende deploy.
+
+## #067 Databases na aanmaken controleren; publieke images
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** De eerste apply maakte `postgres` (op `postgres-ssl:18`) en `redis` aan in `asia-southeast1`, ondanks `image` en `region` in `.railway/railway.ts`; de app-services stonden wel in `europe-west4`. Railway kon de images ophalen zonder registry-credentials: de repository is publiek, dus de GHCR-images ook.
+- **Beslissing:** Na het aanmaken van een database (ook straks in productie) regio en image controleren en, zolang hij leeg is, corrigeren met een tweede apply en een nieuw volume. Geen registry-credentials en geen Pro-plan zolang de repository publiek is.
+- **Alternatieven:** de databases met de hand in het dashboard aanmaken (buiten IaC); de repository of de packages privé maken (dan wel credentials en Pro, #058).
+- **Gevolgen:** Wordt de repository privé, dan eerst registry-credentials zetten, anders faalt de volgende deploy. Een test op de gerenderde config bewijst niet wat Railway aanmaakt; het verify- en statuswerk na een deploy blijft nodig.
