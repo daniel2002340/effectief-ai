@@ -10,6 +10,10 @@ export default mergeConfig(
   base,
   defineConfig({
     test: {
+      // Against a deployed database every query crosses the network; the
+      // seeding hooks run hundreds of them.
+      hookTimeout: 120_000,
+      testTimeout: 30_000,
       include: [
         'src/roles.test.ts',
         'src/with-tenant.test.ts',
