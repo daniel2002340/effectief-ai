@@ -15,12 +15,21 @@ import type { TenantTransaction } from '../with-tenant.ts';
 
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 
-const recordInputSchema = z.strictObject({
-  connectionId: z.uuid(),
-  source: z.enum(webhookSources),
-  deliveryId: z.string().regex(/^[\w:-]{1,200}$/),
-  payload: storedNangoWebhookSchema,
-});
+const recordInputSchema = z
+  .strictObject({
+    /** The connection it is about; for a creation webhook its attempt instead. */
+    connectionId: z.uuid().optional(),
+    connectAttemptId: z.uuid().optional(),
+    source: z.enum(webhookSources),
+    deliveryId: z.string().regex(/^[\w:-]{1,200}$/),
+    payload: storedNangoWebhookSchema,
+  })
+  .refine(
+    (input) => (input.connectionId === undefined) !== (input.connectAttemptId === undefined),
+    {
+      message: 'Exactly one of connectionId and connectAttemptId',
+    },
+  );
 export type RecordWebhookDeliveryInput = z.input<typeof recordInputSchema>;
 
 /**

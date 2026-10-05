@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '@effectief/db';
-import { nangoTestEnv } from '@effectief/integrations/testing';
+import { createFakeNango, nangoTestEnv } from '@effectief/integrations/testing';
 import { defaultJobOptions, parseEnv, queueNames } from '@effectief/shared';
 import { Queue, QueueEvents } from 'bullmq';
 import { pino } from 'pino';
@@ -45,6 +45,7 @@ describe('example queue (Valkey)', () => {
     db: database.db,
     adapters: {},
     reportError: (_error, context) => reported.push(context),
+    nango: createFakeNango(),
     testErrors: false,
   });
 

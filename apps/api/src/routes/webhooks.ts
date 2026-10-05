@@ -1,4 +1,10 @@
-import { type Database, recordWebhookDelivery, resolveConnection, withTenant } from '@effectief/db';
+import {
+  type Database,
+  recordWebhookDelivery,
+  resolveConnectAttempt,
+  resolveConnection,
+  withTenant,
+} from '@effectief/db';
 import {
   NANGO_SIGNATURE_HEADER,
   nangoDeliveryId,
@@ -104,7 +110,7 @@ async function receiveNangoWebhook(
 
   const { delivery } = await withTenant(appDb, target.tenantId, (tx) =>
     recordWebhookDelivery(tx, {
-      connectionId: target.connectionId,
+      ...target.ref,
       source: 'nango',
       deliveryId: nangoDeliveryId(rawBody, webhook, receivedAt),
       payload: storedNangoWebhookSchema.parse(webhook),
@@ -122,14 +128,32 @@ async function receiveNangoWebhook(
   return { received: true } as const;
 }
 
+type Target = {
+  tenantId: string;
+  ref: { connectionId: string } | { connectAttemptId: string };
+};
+
 /**
  * The tenant comes from our database, never from the body's tags. A new
- * connection (`auth/creation`) is not in `connections` yet; it is found
- * through its connect attempt once that exists (docs/integrations.md §2.2).
+ * connection (`auth/creation`) is not in `connections` yet: it is found
+ * through the connect attempt whose secret nonce our server put on the
+ * session (docs/integrations.md §2.2). The job checks the rest.
  */
-async function resolveTarget(appDb: Database, webhook: NangoWebhook) {
-  if (webhook.type === 'auth' && webhook.operation === 'creation') return undefined;
-  return resolveConnection(appDb, webhook.providerConfigKey, webhook.connectionId);
+async function resolveTarget(appDb: Database, webhook: NangoWebhook): Promise<Target | undefined> {
+  if (webhook.type === 'auth' && webhook.operation === 'creation') {
+    const nonce = webhook.tags?.connect_attempt;
+    if (!nonce) return undefined;
+    const attempt = await resolveConnectAttempt(appDb, nonce);
+    return attempt && { tenantId: attempt.tenantId, ref: { connectAttemptId: attempt.attemptId } };
+  }
+  const connection = await resolveConnection(
+    appDb,
+    webhook.providerConfigKey,
+    webhook.connectionId,
+  );
+  return (
+    connection && { tenantId: connection.tenantId, ref: { connectionId: connection.connectionId } }
+  );
 }
 
 function idsOf(webhook: NangoWebhook) {

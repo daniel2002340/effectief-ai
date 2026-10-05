@@ -11,6 +11,7 @@ import {
   type CardPayload,
   cardKinds,
   cardStatuses,
+  connectAttemptFailureCodes,
   connectionProviders,
   connectionStatuses,
   connectionStatusReasons,
@@ -87,17 +88,72 @@ export const connections = pgTable(
 ).enableRLS();
 
 /**
+ * One "connect a mailbox" flow, started by a member (docs/integrations.md
+ * §2.2). Its secret nonce is the tag on the Nango connect session; the
+ * creation webhook finds the tenant through resolve_connect_attempt(nonce)
+ * (migration 0019), so the tenant never comes from what Nango or the browser
+ * sends. Consumed once, together with creating the connection.
+ */
+export const connectAttempts = pgTable(
+  'connect_attempts',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** 32 random bytes, hex. Never sent to the browser or logged. */
+    nonce: text('nonce').notNull(),
+    provider: text('provider', { enum: connectionProviders }).notNull(),
+    nangoIntegrationId: text('nango_integration_id').notNull(),
+    createdByUserId: uuid('created_by_user_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    /** The connection it became. */
+    connectionId: uuid('connection_id'),
+    /** The Nango connection it produced, also when it failed (to remove it there). */
+    nangoConnectionId: text('nango_connection_id'),
+    failureCode: text('failure_code', { enum: connectAttemptFailureCodes }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique('connect_attempts_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('connect_attempts_nonce_unique').on(t.nonce),
+    foreignKey({
+      name: 'connect_attempts_connection_fk',
+      columns: [t.tenantId, t.connectionId],
+      foreignColumns: [connections.tenantId, connections.id],
+    }).onDelete('cascade'),
+    memberRef('connect_attempts_created_by_fk', t.tenantId, t.createdByUserId),
+    check('connect_attempts_nonce', sql`${t.nonce} ~ '^[0-9a-f]{64}$'`),
+    check('connect_attempts_provider', inList(t.provider, connectionProviders)),
+    check('connect_attempts_failure_code', inList(t.failureCode, connectAttemptFailureCodes)),
+    check(
+      'connect_attempts_outcome',
+      sql`(${t.consumedAt} is null) = (${t.connectionId} is null and ${t.failureCode} is null)`,
+    ),
+    check(
+      'connect_attempts_single_outcome',
+      sql`${t.connectionId} is null or ${t.failureCode} is null`,
+    ),
+    index('connect_attempts_tenant_open_idx').on(t.tenantId, t.consumedAt, t.createdAt),
+    tenantIsolation(t.tenantId),
+  ],
+).enableRLS();
+
+/**
  * A received webhook, stored before processing (#038): the job does the work,
  * with retries, and a failure stays visible. Unique per source and delivery,
  * so a repeated delivery is a no-op. The tenant comes from the connection via
- * resolve_connection() (migration 0017), never from the body.
+ * resolve_connection() (migration 0017), or for a new connection from its
+ * attempt via resolve_connect_attempt() (0019); never from the body.
  */
 export const webhookDeliveries = pgTable(
   'webhook_deliveries',
   {
     id: id(),
     tenantId: tenantId(),
-    connectionId: uuid('connection_id').notNull(),
+    /** Null only for a creation webhook, whose connection does not exist yet. */
+    connectionId: uuid('connection_id'),
+    /** For a creation webhook: the attempt it belongs to. */
+    connectAttemptId: uuid('connect_attempt_id'),
     source: text('source', { enum: webhookSources }).notNull(),
     /** The source's delivery ID, or a hash of the body when it has none (§4.4). */
     deliveryId: text('delivery_id').notNull(),
@@ -117,6 +173,15 @@ export const webhookDeliveries = pgTable(
       columns: [t.tenantId, t.connectionId],
       foreignColumns: [connections.tenantId, connections.id],
     }).onDelete('cascade'),
+    foreignKey({
+      name: 'webhook_deliveries_connect_attempt_fk',
+      columns: [t.tenantId, t.connectAttemptId],
+      foreignColumns: [connectAttempts.tenantId, connectAttempts.id],
+    }).onDelete('cascade'),
+    check(
+      'webhook_deliveries_target',
+      sql`num_nonnulls(${t.connectionId}, ${t.connectAttemptId}) = 1`,
+    ),
     check('webhook_deliveries_source', inList(t.source, webhookSources)),
     check('webhook_deliveries_status', inList(t.status, webhookDeliveryStatuses)),
     check('webhook_deliveries_last_error_code', inList(t.lastErrorCode, webhookErrorCodes)),

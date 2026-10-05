@@ -1,5 +1,7 @@
 import { createDatabase } from '@effectief/db';
 import {
+  type ConnectAttemptJob,
+  connectAttemptJobId,
   defaultJobOptions,
   type ExecuteActionJob,
   executeActionJobId,
@@ -7,7 +9,9 @@ import {
   monitoringTestJobOptions,
   type NangoWebhookJob,
   nangoWebhookJobId,
+  type PurgeConnectionJob,
   parseEnv,
+  purgeConnectionJobId,
   queueNames,
   testErrorsEnabled,
 } from '@effectief/shared';
@@ -34,6 +38,14 @@ const nangoWebhookQueue = new Queue<NangoWebhookJob>(queueNames.nangoWebhook, {
   connection: queueConnection,
   defaultJobOptions,
 });
+const connectAttemptQueue = new Queue<ConnectAttemptJob>(queueNames.connectAttempt, {
+  connection: queueConnection,
+  defaultJobOptions,
+});
+const purgeQueue = new Queue<PurgeConnectionJob>(queueNames.purgeConnection, {
+  connection: queueConnection,
+  defaultJobOptions,
+});
 // Not in production: there the test procedure does not exist (decision #069).
 const testQueue = testErrorsEnabled(env.SENTRY_ENVIRONMENT)
   ? new Queue<MonitoringTestJob>(queueNames.monitoringTest, {
@@ -56,6 +68,12 @@ const app = await buildApp({
   enqueueNangoWebhook: async (job) => {
     await nangoWebhookQueue.add('process', job, { jobId: nangoWebhookJobId(job.deliveryId) });
   },
+  enqueueConnectAttempt: async (job) => {
+    await connectAttemptQueue.add('finish', job, { jobId: connectAttemptJobId(job.attemptId) });
+  },
+  enqueuePurgeConnection: async (job) => {
+    await purgeQueue.add('purge', job, { jobId: purgeConnectionJobId(job.connectionId) });
+  },
   enqueueMonitoringTest: async (job) => {
     if (!testQueue) throw new Error('Test errors are disabled in production');
     await testQueue.add('fail', job);
@@ -76,6 +94,8 @@ async function shutdown(signal: string) {
     redis.quit(),
     executeQueue.close(),
     nangoWebhookQueue.close(),
+    connectAttemptQueue.close(),
+    purgeQueue.close(),
     testQueue?.close(),
     appDatabase.close(),
     authDatabase.close(),

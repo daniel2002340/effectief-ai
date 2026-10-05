@@ -60,7 +60,13 @@ export async function processRetentionTenantJob(
 ): Promise<Record<RetentionStep, number>> {
   const { tenantId }: RetentionTenantJob = retentionTenantJobSchema.parse(data);
   const moment = now();
-  const counts = { event_contents: 0, action_inputs: 0, closed_cards: 0, webhook_deliveries: 0 };
+  const counts = {
+    event_contents: 0,
+    action_inputs: 0,
+    closed_cards: 0,
+    webhook_deliveries: 0,
+    connect_attempts: 0,
+  };
   for (const step of retentionSteps) {
     let batch: number;
     do {

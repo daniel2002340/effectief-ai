@@ -4,6 +4,7 @@ import { ORPCError } from '@orpc/server';
 import { actionHandlers, type EnqueueExecuteAction } from './actions.ts';
 import { createBuilders, type SessionResolver } from './builders.ts';
 import { cardHandlers } from './cards.ts';
+import { type ConnectionHandlerDependencies, connectionHandlers } from './connections.ts';
 import { entityHandlers } from './entities.ts';
 import { createTestRouter, type EnqueueMonitoringTest } from './test-errors.ts';
 
@@ -12,6 +13,7 @@ export interface RouterDependencies {
   appDb: Database;
   resolveSession: SessionResolver;
   enqueueExecuteAction: EnqueueExecuteAction;
+  connections: Omit<ConnectionHandlerDependencies, 'appDb'>;
   /** Only outside production; without it the test procedures do not exist (decision #069). */
   enqueueMonitoringTest: EnqueueMonitoringTest | undefined;
 }
@@ -35,12 +37,14 @@ export function createRouter({
   appDb,
   resolveSession,
   enqueueExecuteAction,
+  connections: connectionDependencies,
   enqueueMonitoringTest,
 }: RouterDependencies) {
   const { procedure, publicProcedure, router } = createBuilders(contract, resolveSession);
   const actions = actionHandlers({ appDb, enqueueExecuteAction });
   const cards = cardHandlers({ appDb });
   const entities = entityHandlers({ appDb });
+  const connections = connectionHandlers({ appDb, ...connectionDependencies });
 
   const main = router({
     system: {
@@ -72,6 +76,21 @@ export function createRouter({
     cards: {
       list: procedure.cards.list.handler(({ context, input }) => cards.list(context, input)),
       get: procedure.cards.get.handler(({ context, input }) => cards.get(context, input)),
+    },
+    connections: {
+      list: procedure.connections.list.handler(({ context }) => connections.list(context)),
+      startConnect: procedure.connections.startConnect.handler(({ context, input }) =>
+        connections.startConnect(context, input),
+      ),
+      complete: procedure.connections.complete.handler(({ context, input }) =>
+        connections.complete(context, input),
+      ),
+      reconnect: procedure.connections.reconnect.handler(({ context, input }) =>
+        connections.reconnect(context, input),
+      ),
+      disconnect: procedure.connections.disconnect.handler(({ context, input }) =>
+        connections.disconnect(context, input),
+      ),
     },
     entities: {
       get: procedure.entities.get.handler(({ context, input }) => entities.get(context, input)),

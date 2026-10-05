@@ -1,15 +1,11 @@
-import type {
-  ActionErrorCode,
-  ActionType,
-  AuditContext,
-  ConnectionProvider,
-} from '@effectief/shared';
+import type { ActionErrorCode, ActionType, AuditContext } from '@effectief/shared';
 import { z } from 'zod';
 import { recordEvent } from '../memory/events.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 import { type Action, getAction, transitionAction } from './actions.ts';
 import { createCard, getCard, getCardLinks, linkCard, transitionCard } from './cards.ts';
-import { type Connection, getConnection, transitionConnection } from './connections.ts';
+import { expireConnection } from './connection-status.ts';
+import { type Connection, getConnection } from './connections.ts';
 import { TransitionError } from './transition.ts';
 
 // Executing an approved action, in three steps around the provider call
@@ -149,13 +145,6 @@ const failureTitles: Record<ActionType, string> = {
   'mollie.payment_link': 'Betaallink niet aangemaakt',
 };
 
-const providerNames: Record<ConnectionProvider, string> = {
-  gmail: 'Gmail',
-  outlook: 'Outlook',
-  moneybird: 'Moneybird',
-  mollie: 'Mollie',
-};
-
 /**
  * Executing failed for good: failed with the error code, and a card so the
  * user sees it and can retry or edit. `auth_expired` also expires the
@@ -176,7 +165,13 @@ export async function failExecution(
     context,
   });
 
-  if (errorCode === 'auth_expired') await expireConnection(tx, action.connectionId, context);
+  if (errorCode === 'auth_expired') {
+    await expireConnection(tx, {
+      connectionId: action.connectionId,
+      reason: 'invalid_grant',
+      context,
+    });
+  }
 
   // The failure card points at the same entities as the card of the action.
   const { entityIds } = await getCardLinks(tx, action.cardId);
@@ -192,31 +187,4 @@ export async function failExecution(
     context,
   });
   return { action, card };
-}
-
-async function expireConnection(
-  tx: TenantTransaction,
-  connectionId: string,
-  context: AuditContext | undefined,
-) {
-  const connection = await getConnection(tx, connectionId);
-  if (connection?.status !== 'active') return;
-  await transitionConnection(tx, {
-    connectionId,
-    from: 'active',
-    to: 'expired',
-    reason: 'invalid_grant',
-    actor: system,
-    context,
-  });
-  await createCard(tx, {
-    kind: 'connection_problem',
-    connectionId,
-    title: `Koppeling met ${providerNames[connection.provider]} opnieuw maken`,
-    payload: { reason: 'invalid_grant' },
-    priority: 3,
-    dedupeKey: `connection:${connectionId}`,
-    actor: system,
-    context,
-  });
 }

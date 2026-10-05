@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '@effectief/db';
-import { nangoTestEnv } from '@effectief/integrations/testing';
+import { createFakeNango, nangoTestEnv } from '@effectief/integrations/testing';
 import {
   MonitoringTestError,
   monitoringTestJobOptions,
@@ -64,6 +64,7 @@ describe('monitoring-test queue (Valkey)', () => {
     db: database.db,
     adapters: {},
     reportError,
+    nango: createFakeNango(),
     testErrors: true,
   });
   const production = startWorkers({
@@ -73,6 +74,7 @@ describe('monitoring-test queue (Valkey)', () => {
     db: database.db,
     adapters: {},
     reportError,
+    nango: createFakeNango(),
     testErrors: false,
   });
 

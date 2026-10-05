@@ -1,7 +1,9 @@
 import { createDatabase } from '@effectief/db';
 import type { AdapterRegistry } from '@effectief/integrations';
+import { createNangoClient } from '@effectief/integrations/nango';
 import { parseEnv, testErrorsEnabled } from '@effectief/shared';
 import { workerEnvSchema } from './env.ts';
+import { scheduleConnectionSweeps } from './jobs/connections.ts';
 import { scheduleRetention } from './jobs/retention.ts';
 import { createLogger } from './logger.ts';
 import { closeMonitoring, initMonitoring } from './monitoring.ts';
@@ -23,10 +25,12 @@ const started = startWorkers({
   log,
   db: database.db,
   adapters,
+  nango: createNangoClient({ secretKey: env.NANGO_SECRET_KEY }),
   reportError,
   testErrors: testErrorsEnabled(env.SENTRY_ENVIRONMENT),
 });
 await scheduleRetention(started.retentionQueue);
+await scheduleConnectionSweeps(started.connectionSweepQueue);
 log.info({ queues: started.workers.map((worker) => worker.name) }, 'worker started');
 
 let shuttingDown = false;
