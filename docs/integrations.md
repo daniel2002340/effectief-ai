@@ -2,7 +2,7 @@
 
 Ontwerp voor sessie 4: Gmail en Outlook koppelen via Nango en nieuwe mail binnenhalen tot `events` + bron-inhoud. Geen AI en geen kaarten uit mail; dat is sessie 5.
 
-**Status:** ontwerp, nog niets gebouwd. Beslissingen: #074–#079 (`voorgesteld`). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
+**Status:** ontwerp, nog niets gebouwd. Beslissingen: #074–#080; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
 
 Inhoud:
 
@@ -14,7 +14,7 @@ Inhoud:
 5. [Levenscyclus van een connectie](#5-levenscyclus-van-een-connectie)
 6. [Providers](#6-providers)
 7. [Configuratie, keys en environments](#7-configuratie-keys-en-environments)
-8. [Open vragen](#8-open-vragen)
+8. [Beantwoorde vragen](#8-beantwoorde-vragen)
 9. [Afwijkingen van het bestaande ontwerp](#9-afwijkingen-van-het-bestaande-ontwerp)
 10. [Bouwvolgorde](#10-bouwvolgorde)
 
@@ -129,7 +129,7 @@ Een vangnet-job (§4.3) doet stap 8–10 ook zonder webhook, elke 10 minuten per
 
 ### 2.1 Connect session aanmaken (api)
 
-oRPC-procedures (alle met sessie; `startConnect` en `reconnect` alleen voor `owner`, zie open vraag 7):
+oRPC-procedures (alle met sessie). Elke gebruiker mag zijn eigen mailbox koppelen; opnieuw koppelen en ontkoppelen mag degene die koppelde (`connected_by_user_id`) of een `owner` (§8, vraag 7):
 
 | Procedure | Input | Doet |
 |---|---|---|
@@ -181,7 +181,7 @@ Nango probeert een webhook maar twee keer opnieuw, binnen een seconde. Valt dat 
 
 - De attempt moet bij de tenant **en** de gebruiker van de sessie horen en onverbruikt zijn (anders `NOT_FOUND`).
 - De api zoekt bij Nango `GET /connections?tags[connect_attempt_id]=<attemptId>` (op de tag die onze server zette, niet op een ID uit de browser) en zet bij precies één treffer met de juiste integratie dezelfde job in als de webhook.
-- Vraagt de scope `environment:connections:list` voor de api-key. Nango raadt die scope af voor backends (lekt de key, dan zijn connecties op te sommen). Alternatief: de `connectionId` uit het `connect`-event van de Connect UI alleen als **opzoeksleutel** gebruiken en server-side met `GET /connections/{id}` (`connections:read`) controleren dat zijn tag onze attempt is. Dat is ook veilig (de koppeling hangt aan de tag), maar raakt de letter van de eis. Zie open vraag 3.
+- Vraagt de scope `environment:connections:list` voor de api-key. Nango raadt die scope af voor backends (lekt de key, dan zijn connecties op te sommen); gekozen omdat de frontend dan niets aanlevert (§8, vraag 3). Niet gekozen: de `connectionId` uit het `connect`-event van de Connect UI als opzoeksleutel gebruiken en server-side met `GET /connections/{id}` (`connections:read`) de tag controleren.
 
 Verlopen attempts zonder connectie ruimt de retentie-job op (ouder dan 1 dag).
 
@@ -191,7 +191,7 @@ Verlopen attempts zonder connectie ruimt de retentie-job op (ouder dan 1 dag).
 
 **Ander account bij opnieuw koppelen:** een reconnect kan met een ander Google- of Microsoft-account inloggen; de connectie zou dan ongemerkt een andere mailbox lezen. Daarom een event function `validate-connection` per provider: bij de eerste koppeling slaat hij het provider-account-ID op in de connectie-metadata (Gmail: hash van `emailAddress` uit `users/me/profile`; Outlook: `id` uit `/me`), bij een reconnect weigert hij een ander account. Nango zet de connectie dan op een auth-fout en de gebruiker ziet in de Connect UI dat het mislukte. Dit patroon staat zo in de Nango-docs.
 
-**Twee mailboxen in één tenant** (bijv. `info@` en `jan@`): twee connecties, elk met een eigen attempt, cursor en `account_label`. De bestaande partiële unique `(tenant_id, provider, external_account_id) where status = 'active'` voorkomt dat dezelfde mailbox twee keer actief gekoppeld wordt. Botst de nieuwe connectie daarop, dan maakt de job geen tweede connectie, verwijdert hij de nieuwe Nango-connectie (die is aantoonbaar van ons: de attempt klopt) en zet hij `connect_attempts.failure_code = 'duplicate_account'`; de web-app toont "Deze mailbox is al gekoppeld". Een mail die in beide mailboxen binnenkomt (cc aan beide) wordt twee events; samenvoegen op Message-ID is voor sessie 5 (open vraag 5).
+**Twee mailboxen in één tenant** (bijv. `info@` en `jan@`): twee connecties, elk met een eigen attempt, cursor en `account_label`. De bestaande partiële unique `(tenant_id, provider, external_account_id) where status = 'active'` voorkomt dat dezelfde mailbox twee keer actief gekoppeld wordt. Botst de nieuwe connectie daarop, dan maakt de job geen tweede connectie, verwijdert hij de nieuwe Nango-connectie (die is aantoonbaar van ons: de attempt klopt) en zet hij `connect_attempts.failure_code = 'duplicate_account'`; de web-app toont "Deze mailbox is al gekoppeld". Een mail die in beide mailboxen binnenkomt (cc aan beide) wordt twee events, één per mailbox; dat blijft zo (§8, vraag 5).
 
 `external_account_id` en `account_label` komen uit een kleine Nango-action `account-info` (alleen lezen: Gmail `users/me/profile`, Graph `/me?$select=id,mail,userPrincipalName`), die de worker direct na het aanmaken aanroept. Dat is geen schrijfactie naar buiten, dus geen actiepijplijn (CLAUDE.md, Acties).
 
@@ -207,7 +207,7 @@ Eén record per mail, model `InboxMessage`, zo klein mogelijk:
 |---|---|---|---|
 | `id` | `message.id` | `message.id` | Sleutel bij de provider → `events.external_id` |
 | `threadId` | `threadId` | `conversationId` | `events.thread_key`, kaarten per gesprek (sessie 5) |
-| `internetMessageId` | header `Message-ID` | `internetMessageId` | Herkennen van dezelfde mail in twee mailboxen; antwoorden later |
+| `internetMessageId` | header `Message-ID` | `internetMessageId` | Antwoorden later (`In-Reply-To`/`References`) |
 | `receivedAt` | `internalDate` | `receivedDateTime` | `events.occurred_at` |
 | `from` | header `From` (adres + naam) | `from.emailAddress` | Afzender, koppelen aan contacten |
 | `to`, `cc` | headers `To`, `Cc` (alleen adressen) | `toRecipients`, `ccRecipients` (alleen adressen) | Ontvangers; antwoorden aan allen later |
@@ -288,7 +288,7 @@ Nieuw nodig (§9): `event_contents.cc_addresses` (P) en `event_contents.from_nam
 
 **Voor de subverwerkerslijst:** Nango (Nango Inc., VS) verwerkt OAuth-tokens van de mailbox en, kortstondig, de inhoud van inkomende mail (afzender, ontvangers, onderwerp, tekst, bijlagenamen) van de klant én van derden die de klant mailen. Opslag in AWS; regio niet gedocumenteerd (vermoedelijk VS, us-west-2). DPA is van toepassing op alle cloud-accounts ([nango.dev/terms#dpa](https://nango.dev/terms#dpa)); na te gaan: doorgiftegrondslag (SCC's of Data Privacy Framework), regio, subverwerkers van Nango. Dit is het punt uit #005 ("herzien na pilotgesprekken over EU-hosting").
 
-Verdere beperking, als dat nodig blijkt: de sync alleen metadata laten ophalen (ID, afzender, onderwerp) en de tekst in de worker via de Nango-proxy direct bij de provider ophalen. Dan staat er geen mailtekst in Nango's cache, maar gaat de tekst nog steeds door Nango's proxy (niet gelogd), krijgt de worker de brede scope `environment:proxy` en wordt de ingest complexer. Niet gekozen voor nu; open vraag 4.
+Niet gekozen (§8, vraag 4), maar mogelijk als het later nodig blijkt: de sync alleen metadata laten ophalen (ID, afzender, onderwerp) en de tekst in de worker via de Nango-proxy direct bij de provider ophalen. Dan staat er geen mailtekst in Nango's cache, maar gaat de tekst nog steeds door Nango's proxy (niet gelogd), krijgt de worker de brede scope `environment:proxy` en wordt de ingest complexer.
 
 ---
 
@@ -401,7 +401,7 @@ Gebruiker klikt "Ontkoppelen" → `connections.disconnect` (owner, met bevestigi
 
 Beide met een **eigen OAuth-app** (eigen client-ID en -secret in de Nango-integratie), niet de testapp van Nango: dan ziet de gebruiker "EffectiefAI" in het toestemmingsscherm, kiezen wij de scopes, en kunnen we later van Nango af zonder dat klanten opnieuw moeten koppelen (de refresh-tokens zijn aan onze client-ID gebonden) ([OAuth developer apps](https://nango.dev/docs/guides/auth/auth-guide#oauth-developer-apps)).
 
-Callback-URL: nu `https://api.nango.dev/oauth/callback`. Nango raadt een eigen callback op ons domein aan (308-redirect naar Nango), omdat Google en Microsoft het domein tonen en achteraf wijzigen bestaande flows breekt. Voorstel: `https://app.effectiefai.nl/oauth/callback` in productie, `https://staging.effectiefai.nl/oauth/callback` op staging, als redirect in Caddy (geen app-code). Instellen vóór de Google-verificatie (open vraag 6).
+Callback-URL: nu `https://api.nango.dev/oauth/callback`. Nango raadt een eigen callback op ons domein aan (308-redirect naar Nango), omdat Google en Microsoft het domein tonen en achteraf wijzigen bestaande flows breekt. Gekozen (§8, vraag 6): `https://app.effectiefai.nl/oauth/callback` in productie, `https://staging.effectiefai.nl/oauth/callback` op staging, als 308-redirect in Caddy (geen app-code). Volgorde: redirect live → URL bij Google en Microsoft registreren → callback-URL in Nango (Environment Settings → Backend). Vóór de Google-verificatie.
 
 Per environment een eigen OAuth-app: staging en prod elk een eigen Google Cloud-project en Entra-app (Nango's Google-gids raadt dat ook aan: elk project heeft zijn eigen 100 testgebruikers).
 
@@ -413,7 +413,7 @@ Per environment een eigen OAuth-app: staging en prod elk een eigen Google Cloud-
 | Scope later (versturen, #008) | `gmail.send` (sensitive, niet restricted) voor het verzenden van een goedgekeurd antwoord; `gmail.compose` (restricted) alleen als we concepten in de mailbox willen zetten |
 | Restricted | `gmail.readonly` is **restricted**: app-verificatie + **CASA Tier 2**-beoordeling, jaarlijks te vernieuwen. Nango-ervaring: Google zelf < 1 week, CASA duurt langer; vendors vanaf ±$540 ([security review](https://nango.dev/docs/api-integrations/google-shared/google-security-review)) |
 | Testmodus | Tot de verificatie: max. **100 gebruikers** (teller niet te resetten) en tokens verlopen na **7 dagen** → elke week opnieuw koppelen (dat geeft precies het `refresh`-mislukt-pad van §5.1; goed om te testen). Testgebruikers met de hand toevoegen onder OAuth consent screen → Audience |
-| Verificatie | Alle scopes in één keer laten beoordelen: een scope toevoegen na goedkeuring is een nieuwe beoordeling. Voorstel: `gmail.readonly` + `gmail.send` (open vraag 1) |
+| Verificatie | Alle scopes in één keer laten beoordelen: een scope toevoegen na goedkeuring is een nieuwe beoordeling. Gekozen: `gmail.readonly` + `gmail.send` in één beoordeling (§8, vraag 1) |
 | Google Workspace-klanten | Een Workspace-beheerder kan apps blokkeren of eerst moeten toestaan; dan ziet de gebruiker een foutmelding in het Google-scherm. Tekst in de Connect UI aanpassen (`overrides.docs_connect`) |
 
 ### 6.2 Outlook (Microsoft Graph)
@@ -456,7 +456,7 @@ Elke key alleen in **één** environment, met de smalste scopes. Aanmaken in Env
 
 | Key (weergavenaam) | Environment | Waar | Scopes |
 |---|---|---|---|
-| `app-api` | staging; en apart in prod | Railway `api` (staging resp. prod) | `environment:connect_sessions:write`, plus `environment:connections:list` als open vraag 3 voor de tag-zoekactie kiest |
+| `app-api` | staging; en apart in prod | Railway `api` (staging resp. prod) | `environment:connect_sessions:write`, `environment:connections:list` (zoeken op de attempt-tag, §2.3) |
 | `app-worker` | staging; en apart in prod | Railway `worker` | `environment:records:read`, `environment:records:write` (prune), `environment:actions:execute` (`account-info`), `environment:connections:delete` |
 | `local-api`, `local-worker` | staging | Daniëls `.env` | dezelfde scopes als `app-api`/`app-worker`; eigen keys zodat ze los in te trekken zijn en "Last used" laat zien wie wat doet |
 | `mcp-readonly` | staging | Claude Code (Management MCP, #073) | `environment:integrations:list`, `environment:integrations:read`, `environment:connections:list`, `environment:integrations:list_functions`, `environment:functions:list`, `environment:logs:read`. **Niet** `connections:read` (dan kan `connections_get` niet eens), geen `*_credentials`, geen `proxy`, `deploy`, `syncs:execute`, `actions:execute` of `connect_sessions:write`: die tools geven dan 403, ook als een agent ze toch aanroept |
@@ -513,17 +513,21 @@ packages/integrations/
 
 ---
 
-## 8. Open vragen
+## 8. Beantwoorde vragen
 
-1. **Gmail-scopes voor de verificatie:** nu `gmail.readonly` + `gmail.send` laten beoordelen (één CASA-traject), of alleen `gmail.readonly` en `gmail.send` later (tweede beoordeling)? Voorstel: beide nu.
-2. **Gmail-categorieën:** alleen Promoties en Sociaal overslaan (zoals gevraagd), of ook Updates en Forums? En bij Outlook: de tab "Overige" (Focused Inbox, `inferenceClassification = other`) overslaan? Voorstel: Gmail zoals gevraagd; Outlook alles uit de inbox.
-3. **Vangnet voor de creation-webhook (§2.3):** de api-key `connections:list` geven om op onze tag te zoeken (aanbevolen), of de `connectionId` uit de Connect UI alleen als opzoeksleutel gebruiken en server-side de tag controleren (`connections:read`)?
-4. **Mailtekst in Nango's cache (§3.5):** akkoord met de tekst in de records en direct prunen, of tekst via de proxy ophalen zodat hij nooit in Nango's cache staat?
-5. **Dezelfde mail in twee mailboxen** van één tenant: nu twee events. In sessie 5 samenvoegen op `internetMessageId`, of zo laten?
-6. **Callback-URL op eigen domein** (§6): akkoord met `/oauth/callback` op het app-domein via Caddy, vóór de Google-verificatie?
-7. **Wie mag koppelen en ontkoppelen:** alleen `owner`, of ook `member` voor zijn eigen mailbox? Voorstel: elke gebruiker mag zijn eigen mailbox koppelen; ontkoppelen kan de koppelaar of een owner.
-8. **Sync-frequentie en kosten:** elke 5 minuten polling per mailbox. Nango rekent (afhankelijk van het plan) per connectie en/of per run; de prijzen staan niet in de docs. Graag het plan nakijken; realtime (Pub/Sub, Graph-subscriptions) kan later.
-9. **Nango en EU-hosting** (#005): de regio staat niet in de docs. Blijft Nango Cloud acceptabel voor de pilot als het de VS blijkt, met DPA en directe prune?
+Beantwoord door Daniël op 2026-10-05 (#080).
+
+| # | Vraag | Antwoord |
+|---|---|---|
+| 1 | Gmail-scopes voor de verificatie | `gmail.readonly` + `gmail.send` nu, in één CASA-traject (§6.1) |
+| 2 | Welke mail overslaan | Gmail: alleen Promoties en Sociaal; Updates en Forums wel ophalen. Outlook: alles uit de inbox, ook "Overige" (§3.1) |
+| 3 | Vangnet als de creation-webhook niet aankomt | Zoeken op de attempt-tag; de api-key krijgt `connections:list` (§2.3, §7.3) |
+| 4 | Mailtekst in Nango's cache | Tekst in de records, direct na het opnemen prunen (§3.5) |
+| 5 | Dezelfde mail in twee mailboxen | Zo laten: twee events, niet samenvoegen (§2.4) |
+| 6 | Callback-URL op eigen domein | Ja: `/oauth/callback` op het app-domein, 308-redirect in Caddy, vóór de Google-verificatie (§6) |
+| 7 | Wie mag koppelen en ontkoppelen | Elke gebruiker zijn eigen mailbox; opnieuw koppelen en ontkoppelen door de koppelaar of een owner (§2.1) |
+| 8 | Sync-frequentie | Elke 5 minuten polling; realtime later. Kosten van het Nango-plan nog nakijken (docs/todo.md) |
+| 9 | Nango Cloud zonder gedocumenteerde EU-regio | Acceptabel voor de pilot, met DPA en direct prunen; regio en doorgiftegrondslag nagaan voor de subverwerkerslijst (#005) |
 
 ---
 
@@ -556,7 +560,7 @@ packages/integrations/
 Volgens CLAUDE.md: één integratie end-to-end voordat de volgende begint. Voorstel, elk een eigen PR:
 
 1. **Nango-basis:** env-schema's, Nango-client, webhook-route met verificatie en `webhook_deliveries` + `resolve_connection()` (todo uit #038), queue `nango-webhook`, retentiestap. Tests met vastgelegde webhook-bodies.
-2. **Koppelen (Gmail):** `connect_attempts` + `resolve_connect_attempt()`, procedures, Connect UI in web, `account-info` en `validate-connection` in nango-integrations, CI-compile en deploy naar staging.
+2. **Koppelen (Gmail):** redirect `/oauth/callback` in Caddy, `connect_attempts` + `resolve_connect_attempt()`, procedures, Connect UI in web, `account-info` en `validate-connection` in nango-integrations, CI-compile en deploy naar staging.
 3. **Inlezen (Gmail):** sync `inbox-messages` met fixtures, `sync_cursors`, `mail-ingest` + vangnet, normalisatie, prune; end-to-end op staging met Daniëls mailbox.
 4. **Levenscyclus:** refresh/override/deletion, kaart "Koppeling vernieuwen", ontkoppelen met Nango-delete en `pre-connection-deletion`.
 5. **Outlook:** dezelfde stappen 2–4 voor Outlook, met eerst een fixture van het `@removed`-gedrag.

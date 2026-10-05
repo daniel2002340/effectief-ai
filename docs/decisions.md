@@ -597,15 +597,15 @@ Format:
 
 ## #074 Mail via eigen Nango-syncs: alleen inbox, minimale velden, 14 dagen, direct prunen
 - **Datum:** 2026-10-05
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** Sessie 4 haalt mail binnen via Nango. Het Gmail-template synct de hele mailbox zonder tekst; het Outlook-template 30 dagen met volledige HTML. Nango bewaart record-payloads 30 dagen, in AWS (regio niet gedocumenteerd).
 - **Beslissing:** Eigen syncs `inbox-messages` voor Gmail (history-API) en Outlook (delta), elke 5 minuten, eerste keer 14 dagen terug. Alleen de inbox, zonder spam, prullenbak en Gmail-categorieën Promoties en Sociaal. Per mail: ID's, afzender, ontvangers (to/cc), onderwerp, platte tekst (max. 32.000 tekens), systeemlabels en bijlage-metadata; geen bijlagen, HTML of andere headers. Na het opnemen prunet de worker de records in Nango tot de cursor. Verwijderd of naar spam bij de bron → bron-inhoud weg, event blijft. Details in docs/integrations.md §3.
-- **Alternatieven:** de templates (te veel of te weinig data); tekst via de proxy in plaats van in de records (geen mailtekst in Nango's cache, maar proxy-scope in de worker en meer code; open vraag 4).
+- **Alternatieven:** de templates (te veel of te weinig data); tekst via de proxy in plaats van in de records (geen mailtekst in Nango's cache, maar proxy-scope in de worker en meer code).
 - **Gevolgen:** Nieuwe kolommen `event_contents.from_name` en `cc_addresses`, `events.payload` krijgt `labels` en `backfill`. Nango op de subverwerkerslijst met regio en doorgiftegrondslag (#005).
 
 ## #075 Tenant-toewijzing van een nieuwe connectie via een connect attempt
 - **Datum:** 2026-10-05
-- **Status:** voorgesteld
+- **Status:** geaccepteerd
 - **Context:** De auth-webhook `creation` bevat alleen de tags van de connect session. Op het gedeelde staging-environment maken ook lokaal, het dashboard en de MCP connecties.
 - **Beslissing:** `connections.startConnect` legt een rij in `connect_attempts` vast (tenant en gebruiker uit de sessie) en zet `connect_attempt_id` als tag. De webhook-route zoekt de tenant op met `resolve_connect_attempt()` (SECURITY DEFINER, alleen ID's, zoals #038); de job verbruikt de attempt in dezelfde transactie als `createConnection()`. Onbekende of verbruikte attempts: loggen, 200, niets doen, niets verwijderen. Tags zonder e-mail (`end_user`/`organization` zijn deprecated). Vangnet: `connections.complete({ attemptId })` zoekt bij Nango op de tag. Bij reconnect weigert een `validate-connection`-function een ander account.
 - **Alternatieven:** tenant uit `tags.organization_id` (bewijst niet dat deze database de flow startte); een Redis-nonce met `GETDEL` (niet transactioneel met het aanmaken); `connectionId` uit de frontend.
@@ -631,7 +631,7 @@ Format:
 - **Datum:** 2026-10-05
 - **Status:** voorgesteld
 - **Context:** Nango-keys kunnen per key scopes krijgen. `staging` wordt gedeeld door lokaal, Claude Code en staging.effectiefai.nl; Nango heeft twee webhook-URL's per environment en een `webhook_url_override` per connectie.
-- **Beslissing:** Aparte keys per environment en gebruik: `app-api` (`connect_sessions:write`), `app-worker` (`records:read/write`, `actions:execute`, `connections:delete`), `local-api`/`local-worker` (zelfde scopes), `mcp-readonly` (alleen list/read/logs, geen `connections:read`), `ci-deploy` (`deploy`). De full-access-keys worden niet gebruikt en verwijderd. Primaire webhook-URL wijst naar staging; lokaal zet `NANGO_WEBHOOK_URL_OVERRIDE` (tunnel of `none`) de override op nieuwe connecties. De webhook-route controleert `environment` tegen `NANGO_ENVIRONMENT`.
+- **Beslissing:** Aparte keys per environment en gebruik: `app-api` (`connect_sessions:write`, `connections:list`), `app-worker` (`records:read/write`, `actions:execute`, `connections:delete`), `local-api`/`local-worker` (zelfde scopes), `mcp-readonly` (alleen list/read/logs, geen `connections:read`), `ci-deploy` (`deploy`). De full-access-keys worden niet gebruikt en verwijderd. Primaire webhook-URL wijst naar staging; lokaal zet `NANGO_WEBHOOK_URL_OVERRIDE` (tunnel of `none`) de override op nieuwe connecties. De webhook-route controleert `environment` tegen `NANGO_ENVIRONMENT`.
 - **Alternatieven:** één full-access-key per environment (een lek geeft alles); een eigen Nango-environment voor lokaal (dubbele integraties en OAuth-apps).
 - **Gevolgen:** De MCP-key kan niet meer schrijven, dus de allowlist voor leestools (#073) is veilig. Env-variabelen `NANGO_ENVIRONMENT`, `NANGO_SECRET_KEY`, `NANGO_WEBHOOK_SIGNING_KEY`, `NANGO_WEBHOOK_URL_OVERRIDE`.
 
@@ -642,3 +642,11 @@ Format:
 - **Beslissing:** `packages/integrations/nango-integrations/` als eigen workspace-package met `nango` 0.71.12; functions per provider (`syncs/`, `actions/`, `on-events/`) met fixture-tests. CI: `nango compile` + tests op PR, `nango deploy staging` in `deploy-staging.yml` na merge, zonder `--allow-destructive`. In de app een eigen `fetch`-client met Zod (geen `@nangohq/node`); in web `@nangohq/frontend` 0.71.12 voor de Connect UI. Recordmodellen alleen uitbreiden, nooit breken.
 - **Alternatieven:** `@nangohq/node` (axios, geen validatie van antwoorden); `connect_link` zonder frontend-SDK (geen events).
 - **Gevolgen:** Nieuwe dependencies `nango` (dev) en `@nangohq/frontend`. Een test vergelijkt het recordmodel in de function met het schema in de app.
+
+## #080 Antwoorden op de open vragen van sessie 4
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** docs/integrations.md §8 had negen open vragen bij #074–#079.
+- **Beslissing:** Gmail-verificatie met `gmail.readonly` + `gmail.send` in één keer. Overslaan: Gmail Promoties en Sociaal; Outlook alles uit de inbox. Vangnet voor de creation-webhook zoekt op de attempt-tag (api-key met `connections:list`). Mailtekst in de Nango-records, direct geprunet. Dezelfde mail in twee mailboxen blijft twee events. Callback-URL `/oauth/callback` op het app-domein via Caddy. Elke gebruiker koppelt zijn eigen mailbox; opnieuw koppelen en ontkoppelen door de koppelaar of een owner. Polling elke 5 minuten. Nango Cloud is acceptabel voor de pilot.
+- **Alternatieven:** per vraag in docs/integrations.md §2–§7.
+- **Gevolgen:** #074 en #075 geaccepteerd. De kosten van het Nango-plan en Nango's regio en doorgiftegrondslag moeten nog worden nagekeken (docs/todo.md).

@@ -7,7 +7,7 @@ Alleen open punten. Afgerond = regel verwijderen. Regels voor bijhouden: zie CLA
 Handmatige acties buiten de code: accounts, app-installaties, verificaties, beslissingen.
 
 - [ ] Renovate als GitHub-app op de repo installeren (#025)
-- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072, #074–#079)
+- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072, #076–#079)
 - [ ] Branch protection op `main`: CI-checks verplicht voor merge (#025)
 - [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047), actiestatus met `executing` in de domeinbegrippen (`concept → approved → executing → executed | failed`, #050), uitzondering op "queue-jobs bevatten de tenant" voor fan-out-jobs die alleen tenant-ID's lezen, zoals de retentie-sweep (#052), hosting en foutmonitoring in de stack (Railway voor staging, Caddy als edge, Sentry EU; #054, #055, #057), Railway-config in `.railway/` en de regel "geen host-specifieke code in de apps" (#054, #061), migraties achterwaarts compatibel met de vorige release (#058), bij Logging: wie een fout met persoonsgegevens gooit, zet die ook in een veld met een gevoelige sleutel, zodat ze uit message en stack geschrapt worden (#070), `docs/operations.md` in de structuurlijst, cloudflared bij Tooling als lokale tool (#071)
 - [ ] Railway op de subverwerkerslijst (#054)
@@ -17,16 +17,16 @@ Handmatige acties buiten de code: accounts, app-installaties, verificaties, besl
 - [ ] AWS-account met Bedrock-toegang tot Claude in een EU-regio aanvragen (#007)
 - [ ] Moneybird- en Mollie-OAuth-apps registreren (#008)
 - [ ] Mail koppelen via Nango (sessie 4), in deze volgorde (docs/integrations.md):
-  1. Open vragen 1–9 in docs/integrations.md §8 beantwoorden; vraag 1 (Gmail-scopes) en 6 (callback-URL) vóór stap 6 en 7.
-  2. Nango, environment `staging` → Environment Settings → Webhooks: primaire URL `https://staging.effectiefai.nl/webhooks/nango`, secundaire leeg; aan: connection creation, auth refresh (fouten en herstel), sync; webhooks bij lege syncs uit. Noteer wat er stond (de MCP kon het niet zien).
-  3. Nango: controleren dat de environments `staging` en `prod` heten en dat alleen `prod` "Production environment" aan heeft.
-  4. Signing key van staging → Railway staging, service `api`, sealed variabele `NANGO_WEBHOOK_SIGNING_KEY`. Lokaal in `.env`.
-  5. API keys in staging met custom scopes (#078): `app-api` en `app-worker` → Railway `api`/`worker` als `NANGO_SECRET_KEY`; `local-api` en `local-worker` → lokale `.env`; `mcp-readonly` → de Management MCP in Claude Code (vervangt de huidige key; daarna moet `connections_get` 403 geven) en dan de allowlist voor leestools beslissen (#073); `ci-deploy` → GitHub Environment `staging`, secret `NANGO_SECRET_KEY_STAGING`. Daarna de "Default - Full access"-key verwijderen.
-  6. Google Cloud-project voor staging: Gmail API aan; OAuth consent screen External met de scopes uit vraag 1 en je eigen adressen als testgebruikers; OAuth-client "Web" met de redirect-URI uit vraag 6 (anders `https://api.nango.dev/oauth/callback`). Client-ID en -secret in een nieuwe Nango-integratie `gmail` (provider Gmail) met dezelfde scopes.
-  7. Entra-app voor staging: "any organizational directory and personal Microsoft accounts", platform Web met dezelfde redirect-URI, gedelegeerd `offline_access`, `User.Read`, `Mail.Read`; client secret met vervaldatum (noteer de datum). In een nieuwe Nango-integratie `outlook` met die scopes expliciet (niet `.default`).
-  8. Google OAuth-verificatie en CASA Tier 2 voor de productie-app starten; kan weken duren (#008, docs/integrations.md §6.1).
-  9. Microsoft Publisher Verification regelen (#008, §6.2).
-  10. Nango: regio, DPA en doorgiftegrondslag nagaan; Nango op de subverwerkerslijst (#005, #074, §3.5). Plan en kosten per connectie/sync-run nakijken (vraag 8).
+  1. Nango, environment `staging` → Environment Settings → Webhooks: primaire URL `https://staging.effectiefai.nl/webhooks/nango`, secundaire leeg; aan: connection creation, auth refresh (fouten en herstel), sync; webhooks bij lege syncs uit. Noteer wat er stond (de MCP kon het niet zien).
+  2. Nango: controleren dat de environments `staging` en `prod` heten en dat alleen `prod` "Production environment" aan heeft.
+  3. Signing key van staging → Railway staging, service `api`, sealed variabele `NANGO_WEBHOOK_SIGNING_KEY`. Lokaal in `.env`.
+  4. API keys in staging met custom scopes (#078): `app-api` en `app-worker` → Railway `api`/`worker` als `NANGO_SECRET_KEY`; `local-api` en `local-worker` → lokale `.env`; `mcp-readonly` → de Management MCP in Claude Code (vervangt de huidige key; daarna moet `connections_get` 403 geven) en dan de allowlist voor leestools beslissen (#073); `ci-deploy` → GitHub Environment `staging`, secret `NANGO_SECRET_KEY_STAGING`. Daarna de "Default - Full access"-key verwijderen.
+  5. Google Cloud-project voor staging: Gmail API aan; OAuth consent screen External met `gmail.readonly` en `gmail.send` en je eigen adressen als testgebruikers; OAuth-client "Web" met redirect-URI `https://staging.effectiefai.nl/oauth/callback` (werkt pas na de Caddy-redirect uit de bouw-PR; tot dan `https://api.nango.dev/oauth/callback`). Client-ID en -secret in een nieuwe Nango-integratie `gmail` (provider Gmail) met dezelfde scopes.
+  6. Entra-app voor staging: "any organizational directory and personal Microsoft accounts", platform Web met dezelfde redirect-URI, gedelegeerd `offline_access`, `User.Read`, `Mail.Read`; client secret met vervaldatum (noteer de datum). In een nieuwe Nango-integratie `outlook` met die scopes expliciet (niet `.default`).
+  7. Google OAuth-verificatie en CASA Tier 2 voor de productie-app starten; kan weken duren (#008, docs/integrations.md §6.1).
+  8. Microsoft Publisher Verification regelen (#008, §6.2).
+  9. Callback-URL `https://staging.effectiefai.nl/oauth/callback` in Nango zetten (Environment Settings → Backend) zodra de Caddy-redirect live is en Google en Microsoft hem kennen (docs/integrations.md §6).
+  10. Nango: regio, DPA en doorgiftegrondslag nagaan; Nango op de subverwerkerslijst (#005, #074, §3.5). Plan en kosten per connectie/sync-run nakijken bij polling elke 5 minuten (#080).
 - [ ] Open vragen 3 (bewaartermijnen; de retentie gebruikt nu de voorstelwaarden) en 5 (forget in vrije tekst) in docs/data-model.md §7 beantwoorden (#052)
 - [ ] 3–5 pilotklanten benaderen die Outlook of Gmail plus Moneybird gebruiken (#008)
 
