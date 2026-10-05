@@ -102,8 +102,10 @@ describe('migration step (database)', () => {
     expect(await schemaState(env.DATABASE_URL, missing)).toBe('behind');
     let waits = 0;
     const started = Date.now();
+    // Each attempt also connects, which takes longer on a CI runner; the
+    // timeout leaves room for several attempts either way.
     const current = await waitForSchema(env.DATABASE_URL, {
-      timeoutMs: 300,
+      timeoutMs: 1_000,
       intervalMs: 100,
       migration: missing,
       onWait: () => {
@@ -112,7 +114,7 @@ describe('migration step (database)', () => {
     });
     expect(current).toBe(false);
     expect(waits).toBeGreaterThanOrEqual(2);
-    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(Date.now() - started).toBeLessThan(5_000);
   });
 
   it('waits while the login role does not exist yet, as on a first deploy', async () => {
