@@ -427,6 +427,8 @@ Controle na een deploy: elke fout staat in het juiste project, met release = de 
 - tijd meten (RTO) en het gat tot het gekozen moment (RPO); resultaat als regel in docs/todo.md of een korte notitie in de PR;
 - de herstelde service verwijderen.
 
+**Gedaan op 2026-10-05:** restore naar 10:00:00Z in `postgres-restoretest`, `pnpm restore:verify` groen, ±2 min 16 s van commando tot geverifieerd. Stappen, tijden en valkuilen (Railway meldt `SUCCESS` vóór het einde van de replay, het volume blijft staan na het verwijderen van de service, IaC wil de service verwijderen): docs/operations.md §5. Het script vergelijkt met de bron (migraties, aantallen, gehashte steekproef, RLS, login-rollen) via `railway ssh`, read-only.
+
 ---
 
 ## 8. Kosten

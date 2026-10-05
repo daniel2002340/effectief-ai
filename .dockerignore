@@ -1,3 +1,5 @@
+# Development-only tooling (webhook tunnel, #071); never in an image.
+scripts/dev
 **/node_modules
 **/dist
 **/.turbo

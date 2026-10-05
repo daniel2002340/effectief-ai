@@ -23,6 +23,8 @@
     "stack:smoke": "scripts/stack-smoke.sh",
     "stack:redaction": "scripts/stack-redaction.sh",
     "stack:verify": "STACK_RELEASE=$(git rev-parse HEAD) docker compose -f docker-compose.yml -f docker-compose.stack.yml run --build --rm verify",
+    "tunnel": "node --env-file-if-exists=.env scripts/dev/webhook-tunnel.ts",
+    "restore:verify": "node scripts/deploy/verify-restore.ts",
     "stack:down": "STACK_RELEASE=unused docker compose -f docker-compose.yml -f docker-compose.stack.yml rm --stop --force stack-database migrate api worker edge verify",
     "sourcemaps:upload": "sentry-cli sourcemaps inject \"$SOURCEMAPS_DIR\" && sentry-cli sourcemaps upload --release \"$APP_RELEASE\" \"$SOURCEMAPS_DIR\""
   },
