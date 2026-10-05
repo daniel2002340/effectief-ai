@@ -98,12 +98,14 @@ export default defineRailway((ctx) => {
   });
 
   // The only public service (#057). Pre-deploy waits for the api of the same release.
+  // No `domains` yet: Railway's IaC cannot register a custom domain. It is
+  // added to this service in the dashboard (port 8080) once the service
+  // exists, and then declared here (decision #066, docs/todo.md).
   const edge = service('edge', {
     source: app('edge'),
     preDeploy: 'edge-wait-for-api',
     healthcheck: '/health',
     replicas: one,
-    domains: [{ domain: origin, port: 8080 }],
     env: {
       PORT: '8080',
       API_UPSTREAM: `${railwayVar('api.RAILWAY_PRIVATE_DOMAIN')}:3000`,

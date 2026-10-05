@@ -76,15 +76,13 @@ describe('.railway/railway.ts', () => {
     expect(byName('worker').variables?.DATABASE_AUTH_URL).toBeUndefined();
   });
 
-  it('exposes only the edge publicly, with no TCP proxies anywhere', async () => {
+  it('exposes no service publicly from the file, with no TCP proxies anywhere', async () => {
+    // The edge's domain is added in the dashboard first (decision #066).
     const { resources } = await render('staging');
     const publicServices = resources.filter(
       (r) => Object.keys(r.networking?.customDomains ?? {}).length > 0,
     );
-    expect(publicServices.map((r) => r.name)).toEqual(['edge']);
-    expect(Object.keys(publicServices[0]?.networking?.customDomains ?? {})).toEqual([
-      'staging.effectiefai.nl',
-    ]);
+    expect(publicServices.map((r) => r.name)).toEqual([]);
     expect(resources.filter((r) => r.networking?.tcpProxies)).toEqual([]);
   });
 

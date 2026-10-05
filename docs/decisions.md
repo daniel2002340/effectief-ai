@@ -530,3 +530,11 @@ Format:
 - **Beslissing:** `docker-compose.stack.yml` start dezelfde images met de env van `.railway/railway.ts` tegen de lokale Postgres (eigen database `effectief_stack`, eigen login-rollen) en Valkey; CI draait die stack met een smoketest door de edge. Image `effectief-verify` (stage `verify` in `apps/migrate/Dockerfile`) draait de RLS- en roltests van packages/db als app- en auth-rol; op Railway service `verify` bij elke deploy op staging (restart `NEVER`, resultaat in de deploy-log), niet in productie.
 - **Alternatieven:** Tests via een TCP proxy vanaf een laptop (database publiek); verify alleen op verzoek (een apply zonder de service wil hem verwijderen en faalt).
 - **Gevolgen:** De tests maken op staging testtenants aan en ruimen ze op. De image-matrix in CI is vervangen door de stack-job. Registry-credentials ook voor `verify`.
+
+## #066 Custom domain eerst in het dashboard, daarna in IaC
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** De eerste `railway config plan` weigerde: "Custom-domain registration is not supported by Railway configuration. Add staging.effectiefai.nl in the dashboard". #061 zette het domein in `.railway/railway.ts`.
+- **Beslissing:** `edge` zonder `domains` uitrollen; Daniël voegt `staging.effectiefai.nl` (poort 8080) in het dashboard toe zodra `edge` bestaat; daarna komt het domein terug in `railway.ts`, zodat het vastligt. Zelfde volgorde voor productie.
+- **Alternatieven:** de `edge`-service met de hand aanmaken (onduidelijk of IaC hem dan overneemt).
+- **Gevolgen:** Tot stap 2 test `railway-config.test.ts` dat geen service publiek is vanuit de file. Of een bestaand domein in de file wordt geaccepteerd, blijkt bij de volgende deploy.

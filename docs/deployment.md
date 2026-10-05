@@ -26,7 +26,7 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
 | Postgres + pgvector | Volgens de docs heeft `postgres-ssl` **geen pgvector** ([PostgreSQL](https://docs.railway.com/databases/postgresql)). In de praktijk bevat `postgres-ssl:17` (build 2026-09-30) wel `postgresql-17-pgvector` 0.8.6, getest met `CREATE EXTENSION vector`. Het image bevat pgBackRest voor PITR ([repo](https://github.com/railwayapp-templates/postgres-ssl)). | Railway's standaard-Postgres op tag `17`, geen eigen image (#063, vervangt #060). |
 | Point-in-time recovery | Postgres single en HA. WAL-archief via pgBackRest naar een Railway-bucket; wekelijkse full, dagelijkse differential, ±4 weken venster; **telt pas vanaf de eerste base backup na aanzetten**. Restore maakt een **nieuwe service** naast de oude. CLI: `railway postgres pitr enable|status|restore` ([PITR](https://docs.railway.com/volumes/point-in-time-recovery), [backups](https://docs.railway.com/guides/postgres-backups-restores), [changelog](https://railway.com/changelog/2026-09-04-postgres-in-the-railway-cli)). Niet minor-versies pinnen. | PITR aanzetten vóór de eerste data (§7). |
 | Volume-backups | Dagelijks (6 dagen), wekelijks (27 dagen), maandelijks (89 dagen); incrementeel, tegen volumeprijs ([backups](https://docs.railway.com/reference/backups)). | Daily aan als tweede laag. |
-| Custom domains | Via `domains: [...]` in IaC of het dashboard; Railway regelt TLS. | Alleen de edge krijgt een domein. |
+| Custom domains | `domains: [...]` staat in de IaC-referentie, maar `config plan` weigert het registreren van een nieuw domein: eerst in het dashboard toevoegen (gezien bij de eerste deploy, oktober 2026). Railway regelt TLS. | Alleen de edge krijgt een domein, eerst via het dashboard (#066). |
 | Client-IP | Railway's edge zet `X-Real-IP`. Over `X-Forwarded-For` spreken medewerker en community elkaar tegen (wel/niet strippen) ([forum](https://station.railway.com/questions/security-critical-questions-on-edge-prox-8fddd775)); bij verkeer via de nieuwe CDN-laag is `X-Real-IP` soms het CDN-adres (bekende bug). | Caddy normaliseert; na de eerste deploy testen (§4.3). |
 
 ---
@@ -197,8 +197,8 @@ Waarom niet Railway zelf laten bouwen vanuit GitHub: dan bouwt elke service los,
 
 ### 3.2 Config-as-code
 
-- `.railway/railway.ts` beschrijft het project: services, bron (image), start- en pre-deploy commands, healthchecks, domein, volumes, variabelen (met referenties) en replica's per regio. Secrets staan er als `preserve()` in: de waarde blijft in Railway, de naam staat in git.
-- Verschillen tussen staging en productie via `ctx.isEnvironment('production')` (domein, `SENTRY_ENVIRONMENT`).
+- `.railway/railway.ts` beschrijft het project: services, bron (image), start- en pre-deploy commands, healthchecks, domein (eerst in het dashboard toegevoegd, #066), volumes, variabelen (met referenties) en replica's per regio. Secrets staan er als `preserve()` in: de waarde blijft in Railway, de naam staat in git.
+- Verschillen tussen staging en productie via `ctx.isEnvironment('production')` (`APP_ORIGIN`, `SENTRY_ENVIRONMENT`, geen `verify`).
 - De file legt ook de image-tag vast (`IMAGE_TAG`, verplicht, een volledige SHA), dus config en code worden samen uitgerold: de deploy-workflow doet plan en apply. Een plan als PR-commentaar komt later (docs/todo.md). Productie wordt een tweede environment met dezelfde file en een eigen project token.
 - Wat IaC (nog) niet dekt, staat als handmatige stap in docs/todo.md: TCP proxy van Postgres uit, PITR aan, volume-backups, registry-credentials, gedeelde variabelen.
 - `railway` (npm-package voor de DSL, 3.12.0) is een devDependency van de root en van `apps/migrate` (voor de test); de Railway CLI (5.63.1) installeert de workflow. Geen van beide komt in een image.
@@ -449,7 +449,7 @@ Schatting voor staging met weinig verkeer (gemiddeld gebruik, niet de limiet):
 1. Extra `basic_auth` op staging (§5.3)? **Gekozen: nee** (Daniël liet de keuze vrij): de app-login met allowlist is de afscherming, en basic auth stoort bij testen met pilotklanten.
 2. TLS naar Postgres op het privénetwerk: `sslmode=require` met het self-signed certificaat van `postgres-ssl` vraagt in node-postgres een eigen CA-instelling. **Gekozen:** voorlopig zonder TLS binnen het privénetwerk; uitzoeken vóór productie (docs/todo.md).
 3. ~~PITR op een eigen image~~: vervallen, we gebruiken Railway's eigen image (#063).
-4. ~~Image-tags naast IaC~~: opgelost, de tag staat in IaC zelf (`IMAGE_TAG`) en één apply rolt alles uit (#064). Nog niet gecontroleerd tegen een echt Railway-project: of `config apply` bij een nieuwe image-tag direct uitrolt, en of de CLI het project uit het project token haalt (docs/todo.md).
+4. ~~Image-tags naast IaC~~: opgelost, de tag staat in IaC zelf (`IMAGE_TAG`) en één apply rolt alles uit (#064). De CLI vindt project en environment via het project token (gezien bij de eerste deploy). Nog te controleren: of `config apply` bij een nieuwe image-tag direct uitrolt (docs/todo.md).
 
 ## 10. Bronnen
 
