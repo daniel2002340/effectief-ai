@@ -13,7 +13,7 @@ const log = pino().child({ migration: expectedMigration.tag });
 const current = await waitForSchema(env.DATABASE_URL, {
   timeoutMs: 15 * 60_000,
   intervalMs: 5_000,
-  onWait: () => log.info('waiting for the migration job'),
+  onWait: (state) => log.info({ state }, 'waiting for the migration job'),
 });
 if (current) {
   log.info('schema is current');

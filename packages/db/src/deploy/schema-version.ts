@@ -10,26 +10,45 @@ export const expectedMigration = (() => {
 })();
 
 /**
- * True when the database has applied the given migration (default: this
+ * Why a runtime connection cannot start yet:
+ * - `behind`: the newest migration of this build is not applied;
+ * - `no-login`: the login role does not exist or has another password. On a
+ *   first deploy the migration job creates it (#059), possibly after this
+ *   check started; a wrong password looks the same, so callers log it.
+ */
+export type SchemaState = 'current' | 'behind' | 'no-login';
+
+/** Postgres refuses the login: no such role (28000) or wrong password (28P01). */
+const loginErrors = new Set(['28000', '28P01']);
+const pgCode = (error: unknown) =>
+  error instanceof Error && 'code' in error ? (error as { code: unknown }).code : undefined;
+
+/**
+ * Whether the database has applied the given migration (default: this
  * build's newest). A newer schema is fine: migrations stay compatible with
  * the previous release (decision #058), so a rollback of the code may run on
  * it. Reads as the app role, which may only SELECT the migration table (0015).
  */
-export async function isSchemaCurrent(
+export async function schemaState(
   databaseUrl: string,
   migration: { createdAt: number } = expectedMigration,
-): Promise<boolean> {
+): Promise<SchemaState> {
   const client = new pg.Client({ connectionString: databaseUrl });
-  await client.connect();
+  try {
+    await client.connect();
+  } catch (error) {
+    if (loginErrors.has(pgCode(error) as string)) return 'no-login';
+    throw error;
+  }
   try {
     const { rowCount } = await client.query(
       'select 1 from drizzle.__drizzle_migrations where created_at = $1',
       [migration.createdAt],
     );
-    return rowCount === 1;
+    return rowCount === 1 ? 'current' : 'behind';
   } catch (error) {
     // Before the very first migration the drizzle schema does not exist yet.
-    if (error instanceof Error && 'code' in error && error.code === '3F000') return false;
+    if (pgCode(error) === '3F000') return 'behind';
     throw error;
   } finally {
     await client.end();
@@ -40,7 +59,7 @@ export interface WaitForSchemaOptions {
   timeoutMs: number;
   intervalMs: number;
   migration?: { createdAt: number };
-  onWait?: () => void;
+  onWait?: (state: Exclude<SchemaState, 'current'>) => void;
 }
 
 /**
@@ -54,9 +73,10 @@ export async function waitForSchema(
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    if (await isSchemaCurrent(databaseUrl, migration)) return true;
+    const state = await schemaState(databaseUrl, migration);
+    if (state === 'current') return true;
     if (Date.now() + intervalMs > deadline) return false;
-    onWait?.();
+    onWait?.(state);
     await sleep(intervalMs);
   }
 }

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import {
   expectedMigration,
   findRoleProblems,
-  isSchemaCurrent,
+  schemaState,
   waitForSchema,
 } from '@effectief/db/deploy';
 import { parseEnv } from '@effectief/shared';
@@ -94,12 +94,12 @@ describe('migration step (database)', () => {
 
   it('lets the app role check the schema version', async () => {
     expect(expectedMigration.tag).toMatch(/^\d{4}_/);
-    expect(await isSchemaCurrent(env.DATABASE_URL)).toBe(true);
+    expect(await schemaState(env.DATABASE_URL)).toBe('current');
   });
 
   it('waits for a migration that is not there and gives up after the timeout', async () => {
     const missing = { createdAt: 1 };
-    expect(await isSchemaCurrent(env.DATABASE_URL, missing)).toBe(false);
+    expect(await schemaState(env.DATABASE_URL, missing)).toBe('behind');
     let waits = 0;
     const started = Date.now();
     const current = await waitForSchema(env.DATABASE_URL, {
@@ -113,6 +113,20 @@ describe('migration step (database)', () => {
     expect(current).toBe(false);
     expect(waits).toBeGreaterThanOrEqual(2);
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it('waits while the login role does not exist yet, as on a first deploy', async () => {
+    const url = new URL(env.DATABASE_URL);
+    url.username = 'role_created_later';
+    expect(await schemaState(url.href)).toBe('no-login');
+    const states: string[] = [];
+    const current = await waitForSchema(url.href, {
+      timeoutMs: 150,
+      intervalMs: 50,
+      onWait: (state) => states.push(state),
+    });
+    expect(current).toBe(false);
+    expect(states[0]).toBe('no-login');
   });
 
   it('returns at once when the schema is current', async () => {
