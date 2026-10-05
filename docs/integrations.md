@@ -2,7 +2,7 @@
 
 Ontwerp voor sessie 4: Gmail en Outlook koppelen via Nango en nieuwe mail binnenhalen tot `events` + bron-inhoud. Geen AI en geen kaarten uit mail; dat is sessie 5.
 
-**Status:** ontwerp, nog niets gebouwd. Beslissingen: #074–#080; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
+**Status:** ontwerp, nog niets gebouwd. Beslissingen: #074–#081; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
 
 Inhoud:
 
@@ -133,7 +133,7 @@ oRPC-procedures (alle met sessie). Elke gebruiker mag zijn eigen mailbox koppele
 
 | Procedure | Input | Doet |
 |---|---|---|
-| `connections.list` | – | Connecties van de tenant (provider, status, `account_label`, `last_synced_at`) |
+| `connections.list` | – | Connecties van de tenant (provider, status, `account_label`, `last_synced_at`); nooit `nango_connection_id` of de nonce |
 | `connections.startConnect` | `{ provider: 'gmail' \| 'outlook' }` | Attempt + connect session; geeft `{ sessionToken, attemptId }` |
 | `connections.reconnect` | `{ connectionId }` | Reconnect session voor een eigen connectie (`active` of `expired`) |
 | `connections.complete` | `{ attemptId }` | Vangnet als de creation-webhook niet aankwam (§2.3) |
@@ -141,14 +141,14 @@ oRPC-procedures (alle met sessie). Elke gebruiker mag zijn eigen mailbox koppele
 
 `startConnect`:
 
-1. In `withTenant(tenantId uit de sessie)`: rij in `connect_attempts` (nieuw, §9) met `provider`, `nango_integration_id`, `created_by_user_id` (uit de sessie), `expires_at = now() + 30 min`.
+1. In `withTenant(tenantId uit de sessie)`: rij in `connect_attempts` (nieuw, §9) met `provider`, `nango_integration_id`, `created_by_user_id` (uit de sessie), `expires_at = now() + 30 min` en een `nonce` van 32 willekeurige bytes (`crypto.randomBytes`, hex). De nonce is het geheim van de flow; het `id` (UUIDv7, deels een tijdstempel) gaat nooit naar Nango.
 2. `POST /connect/sessions` met:
    ```json
    {
      "tags": {
        "organization_id": "<tenantId>",
        "end_user_id": "<userId>",
-       "connect_attempt_id": "<attemptId>"
+       "connect_attempt": "<nonce>"
      },
      "allowed_integrations": ["<integratie-ID van de provider>"],
      "webhook_url_override": "<alleen lokaal, zie §7.4>"
@@ -165,13 +165,13 @@ Eis: nooit op basis van iets wat de frontend meestuurt; alleen op basis van wat 
 
 Gekozen: **de connect attempt is de sleutel, niet de tags zelf.**
 
-1. De api zet `connect_attempt_id` (een UUID uit onze database) als tag op de connect session. Alleen onze server kan tags zetten: ze gaan mee in de server-side aanroep met de API key, niet via de browser.
+1. De api zet de `nonce` van de attempt als tag `connect_attempt` op de connect session. Alleen onze server kan tags zetten: ze gaan mee in de server-side aanroep met de API key; de frontend-SDK heeft geen parameter voor tags ([frontend SDK](https://nango.dev/docs/reference/frontend/frontend-sdk), [tags](https://nango.dev/docs/guides/auth/connection-tags-configuration-metadata)). Dat toetsen we in de bouw ook zelf (§2.5).
 2. Nango stuurt `auth/creation` met diezelfde tags, ondertekend met de signing key van het environment.
-3. De api controleert de handtekening en zoekt de tenant op met een nieuwe `SECURITY DEFINER`-functie `resolve_connect_attempt(attempt_id) returns (tenant_id, provider)`, naar het voorbeeld van `resolve_connection()` (#038). De tenant komt dus **uit onze database**, niet uit `tags.organization_id` (dat staat er alleen voor het Nango-dashboard). Zo blijft de regel "tenant nooit uit de request-body" overeind.
-4. De job verbruikt de attempt in `withTenant()`: `UPDATE connect_attempts SET consumed_at = now(), connection_id = … WHERE id = … AND consumed_at IS NULL AND expires_at > now() - interval '1 day'`, in dezelfde transactie als `createConnection()`. Geen rij → niets aanmaken, loggen. Eenmalig en atomair, net als de nonce-regel in CLAUDE.md, maar transactioneel met het effect (een Redis-`GETDEL` vóór een mislukte transactie zou de attempt kwijtmaken).
-5. Extra controles in de job: `providerConfigKey` hoort bij de `provider` van de attempt; `environment` in de payload is gelijk aan `NANGO_ENVIRONMENT`; `nango_connection_id` bestaat nog niet (uniek; een herhaalde levering doet niets).
+3. De api controleert de handtekening en zoekt de tenant op met een nieuwe `SECURITY DEFINER`-functie `resolve_connect_attempt(nonce) returns (tenant_id, attempt_id, provider)`, naar het voorbeeld van `resolve_connection()` (#038). De tenant komt dus **uit onze database**, niet uit `tags.organization_id` (dat staat er alleen voor het Nango-dashboard). Zo blijft de regel "tenant nooit uit de request-body" overeind.
+4. De job verbruikt de attempt in `withTenant()`: `UPDATE connect_attempts SET consumed_at = now(), connection_id = … WHERE id = … AND consumed_at IS NULL AND created_at > now() - interval '1 day'`, in dezelfde transactie als `createConnection()`. Geen rij → niets aanmaken, loggen. Eenmalig en atomair, net als de nonce-regel in CLAUDE.md, maar transactioneel met het effect (een Redis-`GETDEL` vóór een mislukte transactie zou de attempt kwijtmaken).
+5. Extra controles in de job: `providerConfigKey` hoort bij de `provider` van de attempt; `tags.organization_id` en `tags.end_user_id` zijn gelijk aan tenant en gebruiker van de attempt; de gebruiker is nog lid van de tenant (de FK `connected_by_user_id → member` dwingt dat ook af); `environment` in de payload is gelijk aan `NANGO_ENVIRONMENT`; `nango_connection_id` bestaat nog niet (uniek; een herhaalde levering doet niets).
 
-Wordt geweigerd en alleen gelogd (met Nango-connectie-ID en integratie-ID, nooit tags of e-mail): geen `connect_attempt_id`, onbekende attempt (bijvoorbeeld een connectie van de lokale omgeving die op staging binnenkomt, of een testconnectie uit het Nango-dashboard), verbruikte of verlopen attempt, andere provider. Antwoord altijd 200 (geen retries uitlokken). We verwijderen zo'n connectie **niet** bij Nango: op het gedeelde staging-environment kan hij van een andere omgeving zijn.
+Wordt geweigerd en alleen gelogd (met Nango-connectie-ID en integratie-ID, nooit tags of e-mail): geen `connect_attempt`-tag, onbekende attempt (bijvoorbeeld een connectie van de lokale omgeving die op staging binnenkomt, of een testconnectie uit het Nango-dashboard), verbruikte of verlopen attempt, andere provider. Antwoord altijd 200 (geen retries uitlokken). We verwijderen zo'n connectie **niet** bij Nango: op het gedeelde staging-environment kan hij van een andere omgeving zijn.
 
 Waarom niet alleen de tags: `organization_id` in een ondertekende webhook is betrouwbaar zolang alleen wij sessies maken, maar de Management MCP (`connect_session_create`), het dashboard en een tweede omgeving op hetzelfde environment kunnen ook sessies maken. De attempt bewijst dat **deze** database de flow startte, voor **deze** tenant en gebruiker.
 
@@ -180,10 +180,10 @@ Waarom niet alleen de tags: `organization_id` in een ondertekende webhook is bet
 Nango probeert een webhook maar twee keer opnieuw, binnen een seconde. Valt dat samen met een deploy van de api, dan is hij weg. Daarom `connections.complete({ attemptId })`:
 
 - De attempt moet bij de tenant **en** de gebruiker van de sessie horen en onverbruikt zijn (anders `NOT_FOUND`).
-- De api zoekt bij Nango `GET /connections?tags[connect_attempt_id]=<attemptId>` (op de tag die onze server zette, niet op een ID uit de browser) en zet bij precies één treffer met de juiste integratie dezelfde job in als de webhook.
+- De api zoekt bij Nango `GET /connections?tags[connect_attempt]=<nonce>` (op de tag die onze server zette, niet op een ID uit de browser) en zet bij precies één treffer met de juiste integratie dezelfde job in als de webhook.
 - Vraagt de scope `environment:connections:list` voor de api-key. Nango raadt die scope af voor backends (lekt de key, dan zijn connecties op te sommen); gekozen omdat de frontend dan niets aanlevert (§8, vraag 3). Niet gekozen: de `connectionId` uit het `connect`-event van de Connect UI als opzoeksleutel gebruiken en server-side met `GET /connections/{id}` (`connections:read`) de tag controleren.
 
-Verlopen attempts zonder connectie ruimt de retentie-job op (ouder dan 1 dag).
+Sluit de gebruiker het venster vóór `complete` en is de webhook ook weg, dan vangt de sweep het op: elke 10 minuten zoekt hij voor onverbruikte attempts tussen 30 minuten en 1 dag oud op dezelfde manier bij Nango (§4.6). Attempts ouder dan 1 dag ruimt de retentie-job op; vindt hij dan toch nog een Nango-connectie met die nonce, dan verwijdert hij die bij Nango (hij is aantoonbaar van ons en is nooit aan een tenant gekoppeld), zodat er geen mailbox in Nango blijft syncen zonder eigenaar.
 
 ### 2.4 Opnieuw koppelen en twee mailboxen
 
@@ -191,9 +191,31 @@ Verlopen attempts zonder connectie ruimt de retentie-job op (ouder dan 1 dag).
 
 **Ander account bij opnieuw koppelen:** een reconnect kan met een ander Google- of Microsoft-account inloggen; de connectie zou dan ongemerkt een andere mailbox lezen. Daarom een event function `validate-connection` per provider: bij de eerste koppeling slaat hij het provider-account-ID op in de connectie-metadata (Gmail: hash van `emailAddress` uit `users/me/profile`; Outlook: `id` uit `/me`), bij een reconnect weigert hij een ander account. Nango zet de connectie dan op een auth-fout en de gebruiker ziet in de Connect UI dat het mislukte. Dit patroon staat zo in de Nango-docs.
 
+Tweede laag, in onze eigen code: na elke `override` en elk herstel roept de worker `account-info` opnieuw aan en vergelijkt het resultaat met `external_account_id`. Wijkt het af, dan gaat de connectie naar `expired` (reden `account_mismatch`, nieuw), komt er een kaart, en haalt de ingest niets meer op. Zo leest een connectie nooit een andere mailbox dan bij het koppelen, ook als de Nango-function ontbreekt of faalt.
+
 **Twee mailboxen in één tenant** (bijv. `info@` en `jan@`): twee connecties, elk met een eigen attempt, cursor en `account_label`. De bestaande partiële unique `(tenant_id, provider, external_account_id) where status = 'active'` voorkomt dat dezelfde mailbox twee keer actief gekoppeld wordt. Botst de nieuwe connectie daarop, dan maakt de job geen tweede connectie, verwijdert hij de nieuwe Nango-connectie (die is aantoonbaar van ons: de attempt klopt) en zet hij `connect_attempts.failure_code = 'duplicate_account'`; de web-app toont "Deze mailbox is al gekoppeld". Een mail die in beide mailboxen binnenkomt (cc aan beide) wordt twee events, één per mailbox; dat blijft zo (§8, vraag 5).
 
 `external_account_id` en `account_label` komen uit een kleine Nango-action `account-info` (alleen lezen: Gmail `users/me/profile`, Graph `/me?$select=id,mail,userPrincipalName`), die de worker direct na het aanmaken aanroept. Dat is geen schrijfactie naar buiten, dus geen actiepijplijn (CLAUDE.md, Acties).
+
+### 2.5 Kan een mailbox bij een andere tenant terechtkomen?
+
+Nee. Elke route waarlangs een connectie aan een tenant komt, en waarom dat niet de verkeerde tenant kan zijn:
+
+| Route | Wie bepaalt de tenant | Waarom niet een andere tenant |
+|---|---|---|
+| Nieuwe koppeling (`startConnect`) | de sessie (`activeOrganizationId`) | De browser geeft alleen een provider mee. Een gebruiker kan alleen een tenant kiezen waarvan hij lid is (Better Auth, #030) |
+| Webhook `auth/creation` | `resolve_connect_attempt(nonce)` in onze database | De nonce is 256 bits willekeurig, alleen bekend bij onze server en Nango, eenmalig en na een dag ongeldig. Tags kan alleen onze server zetten. Daarnaast moeten tags, provider en lidmaatschap kloppen (§2.2 stap 5) |
+| Vangnet `complete({ attemptId })` | de sessie | De attempt moet bij de tenant **en** de gebruiker van de sessie horen; de connectie wordt bij Nango opgezocht op de nonce die onze server zette, niet op iets uit de browser |
+| Sweep voor attempts | de attempt-rij | Zelfde opzoeking op de nonce, binnen `withTenant()` van de attempt |
+| Opnieuw koppelen (`reconnect`) | de sessie + RLS | Een `connectionId` van een andere tenant geeft `NOT_FOUND`. Een ander account in de reconnect: geweigerd door `validate-connection` en daarna nog door onze accountcontrole (§2.4) |
+| Webhooks `override`, `refresh`, `deletion`, `sync` | `resolve_connection(provider, nango_connection_id)` | Wijzigen alleen de status of data van de connectie die al bij die tenant hoort; maken nooit een nieuwe koppeling |
+| Vervalste webhook | – | Zonder de signing key geen geldige `X-Nango-Hmac-Sha256` → 401 |
+| Andere omgeving op `staging` (lokaal), dashboard, MCP | – | Hun attempts en connecties bestaan niet in deze database → loggen en negeren |
+| `connectionId` meegeven aan `nango.auth()` in de browser | – | De frontend-SDK heeft die parameter. Wij sturen `nango_connection_id` nooit naar de browser (Nango-ID's zijn willekeurige UUID's), en al zou iemand er een raden: een `override` op een vreemde connectie faalt op de accountcontrole (§2.4) en levert geen nieuwe koppeling op |
+
+Tests in de bouw (CLAUDE.md: elke route krijgt een isolatietest): webhook met de nonce van tenant A en tags van tenant B → geweigerd; `complete` met een attempt van een andere tenant of gebruiker → `NOT_FOUND`; `reconnect` op een connectie van een andere tenant → `NOT_FOUND`; `override` met een ander account → `expired`, geen ingest; een connect session aanmaken en in de browser `nango.auth()` met een bestaande `connectionId` en extra `params` proberen → geen wijziging aan die connectie (handmatige test op staging, vastgelegd in de PR).
+
+Wat ons ontwerp **niet** tegenhoudt, omdat het geen lek is: iemand die zelf kan inloggen op een mailbox, kan die koppelen in elke tenant waarvan hij lid is. Dat is toestemming van de eigenaar van die mailbox bij Google of Microsoft, net als het instellen van doorsturen. Wil je dat dezelfde mailbox nooit in twee tenants tegelijk actief is, dan kan dat met een globale controle op `external_account_id` (een smalle `SECURITY DEFINER`-functie). Nadeel: de foutmelding verraadt dat die mailbox al bij een ander bedrijf gekoppeld is. Niet in het ontwerp; zie de vraag in de PR.
 
 ---
 
@@ -228,6 +250,14 @@ Niet ophalen of opslaan, nergens (ook niet in Nango):
 - namen van ontvangers, eigen labelnamen, `snippet`/`bodyPreview` (dubbel met de tekst), `webLink`, `importance`.
 
 Opschonen van quotes en handtekeningen (data-model, `event_contents.body_text`) gebeurt in **onze** normalisatiecode, met fixtures getest, niet in de Nango-function: dan is het te testen zonder deploy, en Nango's kopie leeft toch maar minuten (§3.5).
+
+**Afgedwongen, niet alleen afgesproken.** Bijlagen en HTML komen nergens terecht, ook niet per ongeluk:
+
+- **In de Nango-function:** het recordmodel is een strikt Zod-object met alleen de velden hierboven; `batchSave()` valideert ertegen. Gmail levert met `format=full` de HTML en kleine inline delen wel aan de function (in het geheugen, niet opgeslagen); de function neemt alleen het `text/plain`-deel of zet HTML om naar tekst. Bijlagen haalt hij nooit op (`attachments.get` wordt niet aangeroepen); van Outlook vraagt hij alleen `id,name,contentType,size`.
+- **In de app:** `inboxMessageSchema` in `packages/integrations` is `strictObject`; een record met een onbekend veld (zoals `html`, `payload` of `contentBytes`) wordt geweigerd en gelogd met alleen het record-ID. `event_contents.body_text` en `subject` gaan door een check die resterende tags (`<…>`) en base64-blokken eruit haalt.
+- **In de database:** `event_contents` heeft geen kolom voor HTML of bestanden; `attachments` is `attachmentMetaSchema[]` (naam, type, grootte, ID).
+- **Tests:** fixtures met een HTML-only mail, een mail met bijlage en een mail met inline-afbeelding; de test eist dat het record en de rijen geen `<html`, geen `<`-tags en geen base64 van de bijlage bevatten.
+- **Logs:** records worden nooit gelogd, alleen ID's (CLAUDE.md, Logging). Nango logt van provider-calls alleen URL, methode, status en headers, nooit bodies.
 
 ### 3.2 De syncs (eigen functions, geen templates)
 
@@ -288,6 +318,20 @@ Nieuw nodig (§9): `event_contents.cc_addresses` (P) en `event_contents.from_nam
 
 **Voor de subverwerkerslijst:** Nango (Nango Inc., VS) verwerkt OAuth-tokens van de mailbox en, kortstondig, de inhoud van inkomende mail (afzender, ontvangers, onderwerp, tekst, bijlagenamen) van de klant én van derden die de klant mailen. Opslag in AWS; regio niet gedocumenteerd (vermoedelijk VS, us-west-2). DPA is van toepassing op alle cloud-accounts ([nango.dev/terms#dpa](https://nango.dev/terms#dpa)); na te gaan: doorgiftegrondslag (SCC's of Data Privacy Framework), regio, subverwerkers van Nango. Dit is het punt uit #005 ("herzien na pilotgesprekken over EU-hosting").
 
+**Uitleg voor een klant die ernaar vraagt** (na het nagaan van de regio de plek invullen):
+
+> Voor het koppelen van je mailbox gebruiken we Nango, een gespecialiseerde dienst voor koppelingen met onder meer Google en Microsoft. Nango bewaart de sleutel waarmee EffectiefAI je mailbox mag lezen. Je wachtwoord ziet Nango niet en wij ook niet. Die sleutel blijft bestaan zolang je de koppeling gebruikt.
+>
+> Nieuwe mail gaat via Nango naar EffectiefAI. Bij Nango staat de inhoud daarna nog maar enkele minuten: zodra wij hem hebben opgeslagen, wissen we hem daar. Lukt dat wissen een keer niet, dan ruimt Nango het zelf op na uiterlijk 30 dagen. Bijlagen en de opmaak van mails gaan niet via Nango en worden nergens opgeslagen, alleen de naam en grootte van een bijlage.
+>
+> Nango houdt technische logboeken bij, 15 dagen, zonder de inhoud van je mail.
+>
+> Ontkoppel je je mailbox, dan trekken we de toegang meteen in. Nango verwijdert alles definitief binnen 31 dagen; bij Google trekken we de toestemming ook direct in. Bij EffectiefAI verwijderen we dan de mail die via die koppeling binnenkwam.
+>
+> Nango versleutelt deze gegevens, is SOC 2 Type II-gecertificeerd en heeft met ons een verwerkersovereenkomst. De gegevens staan bij Amazon Web Services in [regio].
+
+Wat de klant niet hoort maar wij wel moeten weten: na het wissen houdt Nango per mail een ID en een hash van de oude inhoud (om wijzigingen te herkennen), tot 60 dagen nadat de sync stopt of 31 dagen na het ontkoppelen. Daar staat geen leesbare inhoud in.
+
 Niet gekozen (§8, vraag 4), maar mogelijk als het later nodig blijkt: de sync alleen metadata laten ophalen (ID, afzender, onderwerp) en de tekst in de worker via de Nango-proxy direct bij de provider ophalen. Dan staat er geen mailtekst in Nango's cache, maar gaat de tekst nog steeds door Nango's proxy (niet gelogd), krijgt de worker de brede scope `environment:proxy` en wordt de ingest complexer.
 
 ---
@@ -333,7 +377,7 @@ Queue `mail-ingest`, payload `{ tenantId, connectionId }`, één wachtende job p
 
 ### 4.3 Vangnet-job
 
-Nango probeert een webhook maar 2 keer opnieuw, binnen een seconde. Daarom: queue `mail-ingest`, herhaalde job `sweep` **elke 10 minuten** (BullMQ job scheduler), zelfde patroon als de retentie-sweep (#052): `list_tenant_ids()`, per tenant de actieve mailconnecties, per connectie een `mail-ingest`-job (gededupliceerd). Een gemiste webhook kost zo hooguit 10 minuten vertraging.
+Nango probeert een webhook maar 2 keer opnieuw, binnen een seconde. Daarom: queue `mail-ingest`, herhaalde job `sweep` **elke 10 minuten** (BullMQ job scheduler), zelfde patroon als de retentie-sweep (#052): `list_tenant_ids()`, per tenant de actieve mailconnecties, per connectie een `mail-ingest`-job (gededupliceerd). Een gemiste sync-webhook kost zo hooguit 10 minuten vertraging. Dezelfde sweep vangt ook gemiste auth-webhooks op (§4.6).
 
 - Lokaal is dit de gewone weg als er geen tunnel draait (§7.4).
 - Het interval is een constante; een ander interval per omgeving hoeft niet (lokaal kan een ontwikkelaar de job handmatig starten via een script).
@@ -353,6 +397,23 @@ Voorstel: **de bron-inhoud direct verwijderen, het event laten staan.**
 - `events` blijft (append-only tijdlijn, zonder inhoud; `summary` blijft als die er al is). Wat er met een open kaart over zo'n mail gebeurt, is sessie 5 (voorstel: kaart `expired`).
 - Archiveren (uit de inbox, mail bestaat nog) verandert niets.
 - Waarom: de gebruiker gooide de mail weg, vaak omdat het spam of ongewenst was; dan willen we de tekst niet 90 dagen bewaren. Het event zelf bevat geen persoonsgegevens behalve de latere samenvatting.
+
+### 4.6 Als een webhook wegvalt
+
+Nango probeert een webhook 2 keer opnieuw, binnen een seconde (§0.1). Een deploy, een herstart of een storing bij ons is genoeg om er een te missen. Daarom mag **geen enkele** webhook nodig zijn om uiteindelijk de juiste toestand te bereiken; de webhook maakt het alleen sneller. De sweep in de queue `mail-ingest` (elke 10 minuten, fan-out per tenant, §4.3) doet drie dingen:
+
+| Gemiste webhook | Gevolg zonder vangnet | Vangnet in de sweep | Uiterlijk hersteld na |
+|---|---|---|---|
+| `sync` | Nieuwe mail komt niet binnen | `mail-ingest` voor elke actieve mailconnectie: records vanaf de eigen cursor | 10 minuten |
+| `auth/creation` | Mailbox gekoppeld bij Nango, niet bij ons; Nango synct zonder eigenaar | Onverbruikte attempts tussen 30 minuten en 1 dag oud: bij Nango zoeken op de nonce en koppelen zoals bij de webhook (§2.3). Na 1 dag: de Nango-connectie verwijderen | 10 minuten (of direct via `complete`) |
+| `auth/refresh` mislukt | Connectie blijft `active`, er komt geen mail meer, de gebruiker weet van niets | Gezondheidscontrole: één keer per uur per actieve of verlopen connectie `GET /connections/{id}`. Antwoord `invalid_credentials` → zelfde afhandeling als de webhook (§5.1) | 1 uur |
+| `auth/refresh` hersteld, `auth/override` | Connectie blijft `expired`, terwijl hij weer werkt | Dezelfde controle: `expired` en gezond → accountcontrole (§2.4) → `active` | 1 uur |
+| `auth/deletion` | Wij denken dat de koppeling bestaat | Dezelfde controle: 404 → `revoked` + `purge-connection` (§5.2) | 1 uur |
+
+- De gezondheidscontrole vraagt de scope `environment:connections:read` voor de worker-key (zonder `read_credentials`: geen tokens).
+- Een webhook die wél aankwam maar waarvan de verwerking faalt, blijft als `failed` in `webhook_deliveries` staan, met retries en een Sentry-melding (§4.1). De sweep doet daarnaast toch zijn werk; beide paden zijn idempotent (unieke events, statusovergangen met `WHERE status = <verwacht>`).
+- Valt de sweep zelf weg (worker of Redis plat): BullMQ registreert de job scheduler opnieuw bij het starten van de worker, en Sentry meldt een worker die niet start. Een monitor die alarm slaat als de laatste geslaagde sweep ouder is dan 30 minuten (Sentry Crons) komt in de bouw-PR van de ingest.
+- Records in Nango blijven 30 dagen staan als wij ze niet ophalen, dus ook een storing van dagen kost geen mail.
 
 ---
 
@@ -457,7 +518,7 @@ Elke key alleen in **één** environment, met de smalste scopes. Aanmaken in Env
 | Key (weergavenaam) | Environment | Waar | Scopes |
 |---|---|---|---|
 | `app-api` | staging; en apart in prod | Railway `api` (staging resp. prod) | `environment:connect_sessions:write`, `environment:connections:list` (zoeken op de attempt-tag, §2.3) |
-| `app-worker` | staging; en apart in prod | Railway `worker` | `environment:records:read`, `environment:records:write` (prune), `environment:actions:execute` (`account-info`), `environment:connections:delete` |
+| `app-worker` | staging; en apart in prod | Railway `worker` | `environment:records:read`, `environment:records:write` (prune), `environment:actions:execute` (`account-info`), `environment:connections:read` (gezondheidscontrole, §4.6), `environment:connections:list` (sweep voor attempts, §2.3), `environment:connections:delete` |
 | `local-api`, `local-worker` | staging | Daniëls `.env` | dezelfde scopes als `app-api`/`app-worker`; eigen keys zodat ze los in te trekken zijn en "Last used" laat zien wie wat doet |
 | `mcp-readonly` | staging | Claude Code (Management MCP, #073) | `environment:integrations:list`, `environment:integrations:read`, `environment:connections:list`, `environment:integrations:list_functions`, `environment:functions:list`, `environment:logs:read`. **Niet** `connections:read` (dan kan `connections_get` niet eens), geen `*_credentials`, geen `proxy`, `deploy`, `syncs:execute`, `actions:execute` of `connect_sessions:write`: die tools geven dan 403, ook als een agent ze toch aanroept |
 | `ci-deploy` | staging | GitHub Environment `staging`, secret `NANGO_SECRET_KEY_STAGING` | `environment:deploy` |
@@ -538,12 +599,12 @@ Beantwoord door Daniël op 2026-10-05 (#080).
 | `webhook_deliveries.connection_id` (data-model) | `not null` | nullable, plus `connect_attempt_id` (FK) voor `auth/creation`; check: precies één van beide | Bij `creation` bestaat de connectie nog niet; de tenant komt uit de attempt |
 | `webhook_deliveries` voor onbekende tenants | – | worden niet opgeslagen, alleen gelogd | Zonder tenant geen rij (RLS); zo stond het al in §6.1 stap 1 |
 | `delivery_id` | "uniek ID van de bron, of sha256 van de body" | sha256 van de body; voor auth-webhooks plus het uur van ontvangst (§4.4) | Nango heeft geen delivery-ID, en dezelfde refresh-fout kan later opnieuw komen |
-| Nieuwe tabel `connect_attempts` | – | tenant-tabel: `provider`, `nango_integration_id`, `created_by_user_id`, `expires_at`, `consumed_at`, `connection_id`, `failure_code`; RLS, grants, isolatietest | Tenant-toewijzing zonder de frontend (§2.2) |
-| Nieuwe functie `resolve_connect_attempt(attempt_id)` | alleen `resolve_connection()` (#038) | tweede smalle `SECURITY DEFINER`-functie, alleen ID's terug | Zelfde reden als #038 |
+| Nieuwe tabel `connect_attempts` | – | tenant-tabel: `nonce` (uniek), `provider`, `nango_integration_id`, `created_by_user_id`, `expires_at`, `consumed_at`, `connection_id`, `failure_code`; RLS, grants, isolatietest | Tenant-toewijzing zonder de frontend (§2.2, §2.5) |
+| Nieuwe functie `resolve_connect_attempt(nonce)` | alleen `resolve_connection()` (#038) | tweede smalle `SECURITY DEFINER`-functie, alleen ID's terug | Zelfde reden als #038 |
 | Nieuwe tabel `sync_cursors` | – | `(tenant_id, connection_id, model)`, `cursor`, `updated_at`; PK `(connection_id, model)`, cascade met de connectie | Nango eist een cursor per connectie en model |
 | `event_contents` | `from_address`, `to_addresses` | plus `from_name` en `cc_addresses` (beide P) | §3.4 |
 | `events.payload` voor mail | `{ attachmentCount? }` | plus `labels` (vaste lijst) en `backfill` | §3.4 |
-| `connectionStatusReasons` | 5 codes | plus `auth_recovered` | Herstel na een tijdelijke refresh-fout (§5.1) |
+| `connectionStatusReasons` | 5 codes | plus `auth_recovered` en `account_mismatch` | Herstel na een tijdelijke refresh-fout (§5.1); ander account na opnieuw koppelen (§2.4) |
 | `audit_log.action` | – | `connection_attempt.rejected`, `mail.content_removed`, `mail.ingested` (aantallen) | Alleen codes en aantallen (#040) |
 | `purge-connection` | alleen `purgeConnection()` | eerst de connectie bij Nango verwijderen (todo uit #052) | §5.3 |
 | Retentie-job (#052) | 4 stappen | plus `webhook_deliveries` (processed > 30 dagen, stond al in de todo) en verlopen `connect_attempts` (> 1 dag) | |
