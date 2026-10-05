@@ -674,3 +674,11 @@ Format:
 - **Beslissing:** Lokaal één key `local-dev` in staging, met de scopes van `app-api` en `app-worker` samen. Op Railway blijven `app-api` en `app-worker` gescheiden. Tests gebruiken nooit de lokale key: ze zetten vaste testwaarden (`nangoTestEnv`) en mocken Nango.
 - **Alternatieven:** twee variabelen (`NANGO_SECRET_KEY_API`/`_WORKER`) of een eigen env-bestand per app (meer configuratie voor één ontwikkelaar).
 - **Gevolgen:** De lokale key mag iets meer dan elk van beide apps; hij bestaat alleen in staging, dat nooit klantdata bevat.
+
+## #084 Koppelen gebouwd: keuzes en afwijkingen ten opzichte van het ontwerp
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** Bouw van docs/integrations.md §10 stap 2 (koppelen), met de levenscyclus uit §5 erbij omdat de webhook-afhandeling die nodig heeft.
+- **Beslissing:** `connections.complete` zoekt bij Nango op de nonce-tag (api-key) en zet een job `connect-attempt`; de worker doet `account-info` (alleen de worker-key mag actions). Eén functie `finishConnectAttempt()` voor webhook, `complete` en sweep. `account-info` gebeurt vóór het aanmaken, zodat een dubbele mailbox nooit een tweede rij wordt; `external_account_id` = sha256(`provider:account-ID`), dezelfde hash die `validate-connection` in Nango-metadata vastlegt. Het vangnet (§4.6) draait in een eigen queue `connection-sweep` (attempts elke 10 minuten, gezondheid elk uur), los van de latere `mail-ingest`. Opnieuw koppelen of ontkoppelen door een lid dat de koppeling niet maakte: `FORBIDDEN`; van een andere tenant: `NOT_FOUND`. `nango-integrations` gebruikt zod 4.3.6, de versie van het `nango`-package: met de catalogversie loopt `nango compile` vast (typecheck zonder geheugen).
+- **Alternatieven:** `account-info` in de api (api-key zou `actions:execute` nodig hebben); de sweep in de queue `mail-ingest` (bestaat nog niet); zod gelijktrekken via een override (breekt `nango compile`).
+- **Gevolgen:** `pre-connection-deletion` (Google-token intrekken) volgt met §10 stap 4; tot dan verwijdert ontkoppelen alleen de connectie bij Nango. De function-tests gebruiken een nep-`nango`-object tot er dryrun-mocks van een echte koppeling zijn. Renovate moet zod in `nango-integrations` samen met `nango` bijwerken.

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@effectief/shared": "workspace:*",
+    "@nangohq/frontend": "0.71.12",
     "@orpc/client": "1.15.4",
     "@orpc/contract": "1.15.4",
     "@orpc/openapi-client": "1.15.4",

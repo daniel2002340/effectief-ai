@@ -4,7 +4,8 @@
 #   - /health gives 200 with the release of this commit;
 #   - an api procedure without a session gives 401;
 #   - every response carries noindex, robots.txt disallows everything;
-#   - source maps are not served.
+#   - source maps are not served;
+#   - /oauth/callback redirects to Nango with its query.
 # The RLS and role tests run separately: pnpm stack:verify.
 #
 # Also for staging after a deploy:
@@ -38,5 +39,8 @@ for path in /health /api/tenant /; do
 done
 check 'robots.txt' 'Disallow: /' "$(curl -s "$base/robots.txt" | sed -n 2p)"
 check 'source maps' 404 "$(status "$base/assets/index.js.map")"
+check '/oauth/callback status' 308 "$(status "$base/oauth/callback?code=c&state=s")"
+check '/oauth/callback location' 'https://api.nango.dev/oauth/callback?code=c&state=s' \
+  "$(curl -s -D - -o /dev/null "$base/oauth/callback?code=c&state=s" | tr -d '\r' | sed -n 's/^[Ll]ocation: //p')"
 
 exit "$failed"

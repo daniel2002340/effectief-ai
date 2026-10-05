@@ -20,6 +20,11 @@
 		-Via
 	}
 
+	# OAuth callback on our own domain (docs/integrations.md §6): Google and
+	# Microsoft show this domain, Nango finishes the flow. 308 keeps the method
+	# and passes the query (code, state) on unchanged. No app code involved.
+	redir /oauth/callback https://api.nango.dev{uri} 308
+
 	@backend path /api /api/* /webhooks /webhooks/* /health
 	handle @backend {
 		reverse_proxy {$API_UPSTREAM} {
@@ -48,7 +53,7 @@ Disallow: /
 	handle {
 		root * /srv
 		header {
-			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.ingest.de.sentry.io; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.ingest.de.sentry.io; frame-src https://connect.nango.dev; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"
 			X-Frame-Options "DENY"
 		}
 		@assets path /assets/*
