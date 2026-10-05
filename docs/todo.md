@@ -7,20 +7,26 @@ Alleen open punten. Afgerond = regel verwijderen. Regels voor bijhouden: zie CLA
 Handmatige acties buiten de code: accounts, app-installaties, verificaties, beslissingen.
 
 - [ ] Renovate als GitHub-app op de repo installeren (#025)
-- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072)
+- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072, #076–#079)
 - [ ] Branch protection op `main`: CI-checks verplicht voor merge (#025)
 - [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047), actiestatus met `executing` in de domeinbegrippen (`concept → approved → executing → executed | failed`, #050), uitzondering op "queue-jobs bevatten de tenant" voor fan-out-jobs die alleen tenant-ID's lezen, zoals de retentie-sweep (#052), hosting en foutmonitoring in de stack (Railway voor staging, Caddy als edge, Sentry EU; #054, #055, #057), Railway-config in `.railway/` en de regel "geen host-specifieke code in de apps" (#054, #061), migraties achterwaarts compatibel met de vorige release (#058), bij Logging: wie een fout met persoonsgegevens gooit, zet die ook in een veld met een gevoelige sleutel, zodat ze uit message en stack geschrapt worden (#070), `docs/operations.md` in de structuurlijst, cloudflared bij Tooling als lokale tool (#071)
 - [ ] Railway op de subverwerkerslijst (#054)
 - [ ] Losgekoppeld volume `postgres-restored` van de restore-oefening verwijderen en controleren met `railway volume list` (docs/operations.md §5)
-- [ ] Nango-account aanmaken, en hostingregio en DPA controleren (#005)
-- [ ] Na herstart van Claude Code controleren dat de Nango Management MCP de staging-key gebruikt (geen `environments_list`, geen `environment`-parameter); daarna de allowlist voor leestools beslissen (#073)
-- [ ] Skill `building-nango-functions` en Nango CLI installeren: niet gevonden op deze machine (`npx skills add NangoHQ/skills -s building-nango-functions`, `npm install -g nango` onder Node 24) (#073)
-- [ ] Docs MCP `nango-docs` uit `.mcp.json` goedkeuren in Claude Code (`/mcp`); was niet verbonden in de sessie (#073)
+- [ ] Skill `building-nango-functions` staat in `.agents/skills/` (ongecommit, met `skills-lock.json`); Claude Code laadt alleen `.claude/skills/`. Symlinken of verplaatsen, en beslissen of `.agents/` en `AGENTS.md` in git horen (#073)
 - [ ] Cohere-account aanmaken; DPA, EU-verwerking en data-retentie van de Cohere API nagaan; Cohere op de subverwerkerslijst (#047)
 - [ ] AWS-account met Bedrock-toegang tot Claude in een EU-regio aanvragen (#007)
-- [ ] Google OAuth-verificatie starten voor de Gmail-scopes; kan weken duren (#008)
-- [ ] Microsoft Publisher Verification regelen (#008)
 - [ ] Moneybird- en Mollie-OAuth-apps registreren (#008)
+- [ ] Mail koppelen via Nango (sessie 4), in deze volgorde (docs/integrations.md):
+  1. Nango, environment `staging` → Environment Settings → Webhooks: primaire URL `https://staging.effectiefai.nl/webhooks/nango`, secundaire leeg; aan: connection creation, auth refresh (fouten en herstel), sync; webhooks bij lege syncs uit. Noteer wat er stond (de MCP kon het niet zien).
+  2. Nango: controleren dat de environments `staging` en `prod` heten en dat alleen `prod` "Production environment" aan heeft.
+  3. Signing key van staging → Railway staging, service `api`, sealed variabele `NANGO_WEBHOOK_SIGNING_KEY`. Lokaal in `.env`.
+  4. API keys in staging met custom scopes (#078): `app-api` en `app-worker` → Railway `api`/`worker` als `NANGO_SECRET_KEY`; `local-api` en `local-worker` → lokale `.env`; `mcp-readonly` → de Management MCP in Claude Code (vervangt de huidige key; daarna moet `connections_get` 403 geven) en dan de allowlist voor leestools beslissen (#073); `ci-deploy` → GitHub Environment `staging`, secret `NANGO_SECRET_KEY_STAGING`. Daarna de "Default - Full access"-key verwijderen.
+  5. Google Cloud-project voor staging: Gmail API aan; OAuth consent screen External met `gmail.readonly` en `gmail.send` en je eigen adressen als testgebruikers; OAuth-client "Web" met redirect-URI `https://staging.effectiefai.nl/oauth/callback` (werkt pas na de Caddy-redirect uit de bouw-PR; tot dan `https://api.nango.dev/oauth/callback`). Client-ID en -secret in een nieuwe Nango-integratie `gmail` (provider Gmail) met dezelfde scopes.
+  6. Entra-app voor staging: "any organizational directory and personal Microsoft accounts", platform Web met dezelfde redirect-URI, gedelegeerd `offline_access`, `User.Read`, `Mail.Read`; client secret met vervaldatum (noteer de datum). In een nieuwe Nango-integratie `outlook` met die scopes expliciet (niet `.default`).
+  7. Google OAuth-verificatie en CASA Tier 2 voor de productie-app starten; kan weken duren (#008, docs/integrations.md §6.1).
+  8. Microsoft Publisher Verification regelen (#008, §6.2).
+  9. Callback-URL `https://staging.effectiefai.nl/oauth/callback` in Nango zetten (Environment Settings → Backend) zodra de Caddy-redirect live is en Google en Microsoft hem kennen (docs/integrations.md §6).
+  10. Nango: regio, DPA en doorgiftegrondslag nagaan; Nango op de subverwerkerslijst (#005, #074, §3.5). Plan en kosten per connectie/sync-run nakijken bij polling elke 5 minuten (#080).
 - [ ] Open vragen 3 (bewaartermijnen; de retentie gebruikt nu de voorstelwaarden) en 5 (forget in vrije tekst) in docs/data-model.md §7 beantwoorden (#052)
 - [ ] 3–5 pilotklanten benaderen die Outlook of Gmail plus Moneybird gebruiken (#008)
 
@@ -36,7 +42,7 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] Twee varianten van drizzle-orm in de lockfile (met en zonder kysely-peer, via Better Auth); dedupliceren zodat de adapter dezelfde kopie gebruikt (#030)
 - [ ] Foutantwoorden van `/api/auth/*` hebben de vorm van Better Auth, niet onze `ErrorResponse` (#030, `apps/api/src/auth/routes.ts`)
 - [ ] Kolomnamen met klasse P/I uit `packages/db/src/pii.ts` toevoegen aan de redaction-sleutels in `packages/shared/src/logging.ts` (docs/data-model.md §3.7)
-- [ ] `resolve_connection()` en de retentiestap voor `webhook_deliveries` (verwerkt, ouder dan 30 dagen) bouwen met de webhook-PR (#038, #052, `packages/db/src/lifecycle/retention.ts`)
+- [ ] `resolve_connection()` en de retentiestap voor `webhook_deliveries` (verwerkt, ouder dan 30 dagen) bouwen met de webhook-PR (#038, #052, #076, `packages/db/src/lifecycle/retention.ts`; docs/integrations.md §10 stap 1)
 - [ ] `proposeAction()` en `addEntityExternalRef()` gooien een gewone `Error` bij een onbekende of ongeschikte connectie; een getypte fout maken zodat de API die naar `NOT_FOUND`/`CONFLICT` vertaalt (`packages/db/src/feed/`)
 - [ ] Deploy-workflow wacht niet tot Railway klaar is met uitrollen; status van de deploys ophalen (GraphQL `deployments`) en de workflow laten falen bij `FAILED`/`CRASHED` (#064, `.github/workflows/deploy-staging.yml`)
 - [ ] `railway config plan` als commentaar op PR's die `.railway/` wijzigen (#061)
@@ -45,7 +51,7 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] API-procedure voor bewerken na uitvoeren of na een fout (`reopenAction()` bestaat in `packages/db/src/feed/actions.ts`) (#051)
 - [ ] BullMQ bewaart de foutmelding van een mislukte job (`failedReason`) in Valkey; bij een onbekende fout kan daar tekst met persoonsgegevens in staan. Melding vervangen door een code (`apps/worker/src/jobs/execute-action.ts`)
 - [ ] Procedures die de lifecycle-jobs starten: `entities.forget` (alleen `owner`, met bevestiging) en `connections.disconnect` (`disconnectConnection()` + job `purge-connection`) (#052, `apps/worker/src/jobs/`)
-- [ ] Bij ontkoppelen ook de toegang bij Nango intrekken (connectie verwijderen via de Nango-API); vereist een Nango-client (#052, #005)
+- [ ] Bij ontkoppelen ook de toegang bij Nango intrekken (connectie verwijderen via de Nango-API) en bij Google het token intrekken (`pre-connection-deletion`); vereist een Nango-client (#052, #077, docs/integrations.md §5.3)
 - [ ] Restcontrole na forgetEntity: overgebleven vrije tekst (feiten, playbooks, samenvattingen, kaarttitels, document-chunks) doorzoeken op naam en identifiers en een kaart voor de owner maken; wacht op open vraag 5 (docs/data-model.md §6.3 stap 3)
 - [ ] `replaceFact()` en `createPlaybookVersion()` gooien `KnowledgeError`; bij de eerste API-procedures vertalen naar `NOT_FOUND`/`CONFLICT`, net als `TransitionError` (`packages/db/src/knowledge/`)
 

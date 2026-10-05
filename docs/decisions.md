@@ -594,3 +594,67 @@ Format:
 - **Beslissing:** Regels in CLAUDE.md, sectie "Externe accounts": alleen de Nango staging-environment, die nooit klantdata bevat; deploys naar staging via CI na merge, vanaf de laptop alleen met toestemming; lezen mag, schrijven alleen met toestemming per keer; fixtures uit echte data geanonimiseerd. Afgedwongen in `.claude/settings.json`: `nango-docs` toegestaan, `nango-management` altijd `ask`, `deny` op `.env*` (behalve `.env.example`), `~/.claude.json` en Bash-commando's met `KEY`, `SECRET` of `TOKEN` of die de omgeving tonen. gitleaks krijgt regels `nango-secret-key` en `bearer-uuid`.
 - **Alternatieven:** alleen afspraken zonder permissies (een agent in auto-mode leest ze niet af); een aparte API key zonder schrijfrechten (biedt Nango niet per tool).
 - **Gevolgen:** Bash-deny is case-sensitive en geen harde grens (`bash -c`, andere schrijfwijzen); de regels zijn de afspraak, de permissies het vangnet. Bash-commando's met `KEY`/`SECRET`/`TOKEN` in hoofdletters (ook commitberichten) worden geweigerd. Een `ask` op de hele server overstemt elke `allow` op één tool; leesrechten zonder vragen vereisen dus `ask` per schrijftool. Geldt straks ook voor Railway en Sentry.
+
+## #074 Mail via eigen Nango-syncs: alleen inbox, minimale velden, 14 dagen, direct prunen
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** Sessie 4 haalt mail binnen via Nango. Het Gmail-template synct de hele mailbox zonder tekst; het Outlook-template 30 dagen met volledige HTML. Nango bewaart record-payloads 30 dagen, in AWS (regio niet gedocumenteerd).
+- **Beslissing:** Eigen syncs `inbox-messages` voor Gmail (history-API) en Outlook (delta), elke 5 minuten, eerste keer 14 dagen terug. Alleen de inbox, zonder spam, prullenbak en Gmail-categorieën Promoties en Sociaal. Per mail: ID's, afzender, ontvangers (to/cc), onderwerp, platte tekst (max. 32.000 tekens), systeemlabels en bijlage-metadata; geen bijlagen, HTML of andere headers. Na het opnemen prunet de worker de records in Nango tot de cursor. Verwijderd of naar spam bij de bron → bron-inhoud weg, event blijft. Details in docs/integrations.md §3.
+- **Alternatieven:** de templates (te veel of te weinig data); tekst via de proxy in plaats van in de records (geen mailtekst in Nango's cache, maar proxy-scope in de worker en meer code).
+- **Gevolgen:** Nieuwe kolommen `event_contents.from_name` en `cc_addresses`, `events.payload` krijgt `labels` en `backfill`. Nango op de subverwerkerslijst met regio en doorgiftegrondslag (#005).
+
+## #075 Tenant-toewijzing van een nieuwe connectie via een connect attempt
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** De auth-webhook `creation` bevat alleen de tags van de connect session. Op het gedeelde staging-environment maken ook lokaal, het dashboard en de MCP connecties.
+- **Beslissing:** `connections.startConnect` legt een rij in `connect_attempts` vast (tenant en gebruiker uit de sessie) en zet `connect_attempt_id` als tag. De webhook-route zoekt de tenant op met `resolve_connect_attempt()` (SECURITY DEFINER, alleen ID's, zoals #038); de job verbruikt de attempt in dezelfde transactie als `createConnection()`. Onbekende of verbruikte attempts: loggen, 200, niets doen, niets verwijderen. Tags zonder e-mail (`end_user`/`organization` zijn deprecated). Vangnet: `connections.complete({ attemptId })` zoekt bij Nango op de tag. Bij reconnect weigert een `validate-connection`-function een ander account.
+- **Alternatieven:** tenant uit `tags.organization_id` (bewijst niet dat deze database de flow startte); een Redis-nonce met `GETDEL` (niet transactioneel met het aanmaken); `connectionId` uit de frontend.
+- **Gevolgen:** `webhook_deliveries.connection_id` wordt nullable met `connect_attempt_id` ernaast. Vult de regel "Nango connect-session" in CLAUDE.md in.
+
+## #076 Inlezen: webhook als seintje, cursor per connectie, vangnet-job
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** Nango probeert een webhook maar 2 keer opnieuw (binnen een seconde) en stuurt geen delivery-ID; sync-webhooks bevatten geen records.
+- **Beslissing:** Webhook → `webhook_deliveries` (#038) → job. Job `mail-ingest` per connectie (gededupliceerd, cursorrij `FOR UPDATE`) haalt records op vanaf de cursor in `sync_cursors`; per pagina één transactie met events, bron-inhoud en de nieuwe cursor. Een `sweep` elke 10 minuten zet voor elke actieve mailconnectie een ingest-job (fan-out via `list_tenant_ids()`, zoals #052). `delivery_id` = sha256 van de body, voor auth-webhooks plus het uur.
+- **Alternatieven:** records in de webhook-request verwerken (#013); alleen op webhooks vertrouwen (gemiste webhook = gemiste mail); `modified_after` in plaats van de cursor (Nango raadt de cursor aan).
+- **Gevolgen:** Nieuwe tabel `sync_cursors`. Lokaal werkt zonder webhooks.
+
+## #077 Levenscyclus van een mailconnectie
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** CLAUDE.md en #044 geven de statussen; Nango meldt refresh-fouten en herstel, opnieuw autoriseren en verwijderen als auth-webhooks.
+- **Beslissing:** Refresh mislukt → `expired` (`invalid_grant`) + kaart `connection_problem` "Koppeling vernieuwen", geen ingest meer. Refresh hersteld → `active` met nieuwe reden `auth_recovered`. `override` → `expired → active` (`reauthorized`). `deletion` → `revoked` + purge. Ontkoppelen: `revoked` → job `purge-connection` verwijdert eerst de connectie bij Nango (een `pre-connection-deletion`-function trekt bij Google het token in), daarna `purgeConnection()`.
+- **Alternatieven:** wachten met `expired` tot Nango opgeeft (gebruiker ziet dagen geen mail zonder uitleg); `revoked` bij een refresh-fout (niet herstelbaar, terwijl het een storing kan zijn).
+- **Gevolgen:** Microsoft kent geen intrekken door de app zelf; de app wijst de gebruiker de weg naar zijn Microsoft-account. Te verifiëren in de Microsoft-docs.
+
+## #078 Nango-keys per gebruik, gedeeld staging-environment en webhook-override voor lokaal
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** Nango-keys kunnen per key scopes krijgen. `staging` wordt gedeeld door lokaal, Claude Code en staging.effectiefai.nl; Nango heeft twee webhook-URL's per environment en een `webhook_url_override` per connectie.
+- **Beslissing:** Aparte keys per environment en gebruik: `app-api` (`connect_sessions:write`, `connections:list`), `app-worker` (`records:read/write`, `actions:execute`, `connections:delete`), `local-api`/`local-worker` (zelfde scopes), `mcp-readonly` (alleen list/read/logs, geen `connections:read`), `ci-deploy` (`deploy`). De full-access-keys worden niet gebruikt en verwijderd. Primaire webhook-URL wijst naar staging; lokaal zet `NANGO_WEBHOOK_URL_OVERRIDE` (tunnel of `none`) de override op nieuwe connecties. De webhook-route controleert `environment` tegen `NANGO_ENVIRONMENT`.
+- **Alternatieven:** één full-access-key per environment (een lek geeft alles); een eigen Nango-environment voor lokaal (dubbele integraties en OAuth-apps).
+- **Gevolgen:** De MCP-key kan niet meer schrijven, dus de allowlist voor leestools (#073) is veilig. Env-variabelen `NANGO_ENVIRONMENT`, `NANGO_SECRET_KEY`, `NANGO_WEBHOOK_SIGNING_KEY`, `NANGO_WEBHOOK_URL_OVERRIDE`.
+
+## #079 nango-integrations in de repo, deploy via CI, eigen Nango-client
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** #005 wil de integratiecode in de eigen repo; CLAUDE.md noemt `packages/integrations` met `nango-integrations/`. Deployen naar Nango-staging gebeurt via CI (#073).
+- **Beslissing:** `packages/integrations/nango-integrations/` als eigen workspace-package met `nango` 0.71.12; functions per provider (`syncs/`, `actions/`, `on-events/`) met fixture-tests. CI: `nango compile` + tests op PR, `nango deploy staging` in `deploy-staging.yml` na merge, zonder `--allow-destructive`. In de app een eigen `fetch`-client met Zod (geen `@nangohq/node`); in web `@nangohq/frontend` 0.71.12 voor de Connect UI. Recordmodellen alleen uitbreiden, nooit breken.
+- **Alternatieven:** `@nangohq/node` (axios, geen validatie van antwoorden); `connect_link` zonder frontend-SDK (geen events).
+- **Gevolgen:** Nieuwe dependencies `nango` (dev) en `@nangohq/frontend`. Een test vergelijkt het recordmodel in de function met het schema in de app.
+
+## #080 Antwoorden op de open vragen van sessie 4
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** docs/integrations.md §8 had negen open vragen bij #074–#079.
+- **Beslissing:** Gmail-verificatie met `gmail.readonly` + `gmail.send` in één keer. Overslaan: Gmail Promoties en Sociaal; Outlook alles uit de inbox. Vangnet voor de creation-webhook zoekt op de attempt-tag (api-key met `connections:list`). Mailtekst in de Nango-records, direct geprunet. Dezelfde mail in twee mailboxen blijft twee events. Callback-URL `/oauth/callback` op het app-domein via Caddy. Elke gebruiker koppelt zijn eigen mailbox; opnieuw koppelen en ontkoppelen door de koppelaar of een owner. Polling elke 5 minuten. Nango Cloud is acceptabel voor de pilot.
+- **Alternatieven:** per vraag in docs/integrations.md §2–§7.
+- **Gevolgen:** #074 en #075 geaccepteerd. De kosten van het Nango-plan en Nango's regio en doorgiftegrondslag moeten nog worden nagekeken (docs/todo.md).
+
+## #081 Aanvullingen na review: geheime nonce, accountcontrole en vangnet voor elke webhook
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** Review van docs/integrations.md: een mailbox mag nooit bij een andere tenant terechtkomen, en geen enkele gemiste webhook mag blijvend schade doen. #075 gebruikte het attempt-ID (UUIDv7, deels tijdstempel) als tag en dekte alleen gemiste `sync`- en `creation`-webhooks met een actie van de gebruiker.
+- **Beslissing:** Aanvulling op #075: de tag is een geheime nonce van 256 bits (`connect_attempts.nonce`), en de job controleert ook tags, provider en lidmaatschap. Na elke `override` of herstel vergelijkt de worker het account met `external_account_id`; wijkt het af, dan `expired` met reden `account_mismatch`. Aanvulling op #076: de sweep zoekt ook onverbruikte attempts op bij Nango, verwijdert Nango-connecties van attempts ouder dan 1 dag, en controleert elk uur per connectie de gezondheid bij Nango (vangt gemiste `refresh`-, `override`- en `deletion`-webhooks op). Bijlagen en HTML worden geweerd met strikte Zod-schema's in function en app, plus fixture-tests.
+- **Alternatieven:** alleen de attempt-tabel zonder nonce (het ID is deels voorspelbaar); vertrouwen op de `validate-connection`-function alleen (faalt stil als de function ontbreekt); geen gezondheidscontrole (een gemiste refresh-webhook laat de gebruiker zonder mail en zonder melding).
+- **Gevolgen:** Worker-key krijgt `connections:read` en `connections:list`. Nieuwe statusreden `account_mismatch`. Isolatietests per route zoals in docs/integrations.md §2.5. Een monitor op de sweep (Sentry Crons).
