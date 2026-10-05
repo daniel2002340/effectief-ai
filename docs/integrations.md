@@ -2,7 +2,7 @@
 
 Ontwerp voor sessie 4: Gmail en Outlook koppelen via Nango en nieuwe mail binnenhalen tot `events` + bron-inhoud. Geen AI en geen kaarten uit mail; dat is sessie 5.
 
-**Status:** ontwerp, nog niets gebouwd. Beslissingen: #074–#081; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
+**Status:** stap 1 van §10 gebouwd (Nango-basis); de rest is ontwerp. Staging gebruikt voorlopig Nango's testapps (#082). Beslissingen: #074–#083; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
 
 Inhoud:
 
@@ -344,7 +344,7 @@ Niet gekozen (§8, vraag 4), maar mogelijk als het later nodig blijkt: de sync a
 
 1. **Verify** op de ruwe `Buffer`: HMAC-SHA256 met `NANGO_WEBHOOK_SIGNING_KEY`, hex, vergelijken met `crypto.timingSafeEqual`. Ontbreekt of klopt niet → 401. Geen SDK nodig.
 2. **Parse** met Zod (`nangoWebhookSchema`, gediscrimineerd op `type`/`operation`). Onbekend type → 200 en negeren (Nango voegt types toe, docs). Ongeldige body na een geldige handtekening → 400 en loggen.
-3. **`environment`** moet gelijk zijn aan `NANGO_ENVIRONMENT`; anders 200, loggen als fout, niet verwerken.
+3. **`environment`** moet gelijk zijn aan `NANGO_ENVIRONMENT` (zonder hoofdlettergevoeligheid); anders 200, loggen als fout, niet verwerken. Sync-webhooks hebben geen `environment` (Nango-docs); daar geldt alleen de tenant-opzoeking.
 4. **Tenant opzoeken**: `creation` via `resolve_connect_attempt()`, de rest via `resolve_connection(provider, nango_connection_id)` (#038). Onbekend → 200 en loggen met ID's (data-model §6.1 stap 1). Zo negeert staging de connecties van lokaal.
 5. **Opslaan** in `webhook_deliveries` (`on conflict do nothing`), `delivery_id` zie §4.4.
 6. **Job** in de queue `nango-webhook` met `{ tenantId, deliveryId }`.

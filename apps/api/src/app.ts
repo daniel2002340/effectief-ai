@@ -18,7 +18,7 @@ import { rateLimit } from './plugins/rate-limit.ts';
 import { registerWebhookRoutes } from './plugins/raw-body.ts';
 import { routeAuth } from './plugins/route-auth.ts';
 import { healthRoutes } from './routes/health.ts';
-import { webhookRoutes } from './routes/webhooks.ts';
+import { createWebhookRoutes, type EnqueueNangoWebhook } from './routes/webhooks.ts';
 
 export interface AppDependencies {
   env: ApiEnv;
@@ -31,6 +31,8 @@ export interface AppDependencies {
   };
   /** Puts an approved action on the execute queue (BullMQ in main.ts). */
   enqueueExecuteAction: EnqueueExecuteAction;
+  /** Puts a stored Nango webhook delivery on its queue (BullMQ in main.ts). */
+  enqueueNangoWebhook: EnqueueNangoWebhook;
   /** Puts a failing test job on its queue; only used outside production (decision #069). */
   enqueueMonitoringTest: EnqueueMonitoringTest;
   /** Sends unexpected (5xx) errors to monitoring; IDs only. */
@@ -39,7 +41,9 @@ export interface AppDependencies {
   rateLimitMax?: number;
   /** Sign-in and sign-up attempts per IP per window. */
   loginRateLimit?: { max: number; timeWindow: string };
-  /** Routes inside the /webhooks scope; tests pass their own. */
+  /** Where logs go; tests capture them. Defaults to stdout. */
+  logStream?: { write: (line: string) => void };
+  /** Routes inside the /webhooks scope; tests may pass their own instead. */
   webhooks?: (scope: FastifyInstance) => Promise<void>;
 }
 
@@ -49,14 +53,16 @@ export async function buildApp({
   redis,
   databases,
   enqueueExecuteAction,
+  enqueueNangoWebhook,
   enqueueMonitoringTest,
   reportError,
   rateLimitMax = 300,
   loginRateLimit = { max: 10, timeWindow: '15 minutes' },
-  webhooks = webhookRoutes,
+  webhooks,
+  logStream,
 }: AppDependencies): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: loggerOptions(env),
+    logger: { ...loggerOptions(env), ...(logStream ? { stream: logStream } : {}) },
     genReqId: () => randomUUID(),
     bodyLimit: 1024 * 1024,
     // Which proxies may set X-Forwarded-For; decides the client IP for rate limiting.
@@ -84,7 +90,10 @@ export async function buildApp({
   await app.register(healthRoutes, { release: env.APP_RELEASE });
   await app.register(authRoutes, { auth, env, loginRateLimit });
   await app.register(orpcRoutes, { router, reportError });
-  await registerWebhookRoutes(app, webhooks);
+  await registerWebhookRoutes(
+    app,
+    webhooks ?? createWebhookRoutes({ env, appDb: databases.app, enqueueNangoWebhook }),
+  );
 
   return app;
 }

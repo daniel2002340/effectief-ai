@@ -13,6 +13,7 @@ import { processExampleJob } from './jobs/example.ts';
 import { processExecuteActionJob } from './jobs/execute-action.ts';
 import { processForgetEntityJob } from './jobs/forget-entity.ts';
 import { processMonitoringTestJob } from './jobs/monitoring-test.ts';
+import { processNangoWebhookJob } from './jobs/nango-webhook.ts';
 import { processPurgeConnectionJob } from './jobs/purge-connection.ts';
 import { processRetentionSweep, processRetentionTenantJob } from './jobs/retention.ts';
 
@@ -109,7 +110,12 @@ export function startWorkers({
     (job) => processPurgeConnectionJob(job.data, { jobId: jobIdOf(job) }, { db, log }),
     { ...options, concurrency: 1 },
   );
-  const workers = [example, executeAction, retention, forgetEntity, purgeConnection];
+  const nangoWebhook = new Worker(
+    queueNames.nangoWebhook,
+    (job) => processNangoWebhookJob(job.data, { jobId: jobIdOf(job) }, { db, log }),
+    options,
+  );
+  const workers = [example, executeAction, retention, forgetEntity, purgeConnection, nangoWebhook];
   if (testErrors) {
     workers.push(
       new Worker(

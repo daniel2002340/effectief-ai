@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDatabase, sql } from '@effectief/db';
+import { nangoTestEnv } from '@effectief/integrations/testing';
 import { parseEnv } from '@effectief/shared';
 import type { FastifyInstance } from 'fastify';
 import { Redis } from 'ioredis';
@@ -7,7 +8,11 @@ import { afterAll, expect } from 'vitest';
 import { type AppDependencies, buildApp } from '../src/app.ts';
 import { type ApiEnv, apiEnvSchema } from '../src/env.ts';
 
-export const testEnv = parseEnv(apiEnvSchema, { ...process.env, LOG_LEVEL: 'silent' });
+export const testEnv = parseEnv(apiEnvSchema, {
+  ...process.env,
+  ...nangoTestEnv,
+  LOG_LEVEL: 'silent',
+});
 
 const redis = new Redis(testEnv.REDIS_URL);
 // Same roles as production: the app role and the auth role, never the owner.
@@ -20,6 +25,9 @@ export const reportedErrors: { error: unknown; context: Record<string, unknown> 
 
 /** Monitoring-test jobs the API enqueued, newest last. */
 export const enqueuedMonitoringTests: { tenantId: string }[] = [];
+
+/** Nango webhook jobs the API enqueued, newest last; tests read and clear it. */
+export const enqueuedNangoWebhooks: { tenantId: string; deliveryId: string }[] = [];
 
 /** Execute jobs the API enqueued, newest last; tests read and clear it. */
 export const enqueuedExecutions: { tenantId: string; actionId: string; approvedAt: Date }[] = [];
@@ -42,6 +50,9 @@ export async function createTestApp(
     databases: { app: appDatabase.db, auth: authDatabase.db },
     enqueueExecuteAction: async (job) => {
       enqueuedExecutions.push(job);
+    },
+    enqueueNangoWebhook: async (job) => {
+      enqueuedNangoWebhooks.push(job);
     },
     enqueueMonitoringTest: async (job) => {
       enqueuedMonitoringTests.push(job);

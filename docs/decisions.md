@@ -658,3 +658,19 @@ Format:
 - **Beslissing:** Aanvulling op #075: de tag is een geheime nonce van 256 bits (`connect_attempts.nonce`), en de job controleert ook tags, provider en lidmaatschap. Na elke `override` of herstel vergelijkt de worker het account met `external_account_id`; wijkt het af, dan `expired` met reden `account_mismatch`. Aanvulling op #076: de sweep zoekt ook onverbruikte attempts op bij Nango, verwijdert Nango-connecties van attempts ouder dan 1 dag, en controleert elk uur per connectie de gezondheid bij Nango (vangt gemiste `refresh`-, `override`- en `deletion`-webhooks op). Bijlagen en HTML worden geweerd met strikte Zod-schema's in function en app, plus fixture-tests.
 - **Alternatieven:** alleen de attempt-tabel zonder nonce (het ID is deels voorspelbaar); vertrouwen op de `validate-connection`-function alleen (faalt stil als de function ontbreekt); geen gezondheidscontrole (een gemiste refresh-webhook laat de gebruiker zonder mail en zonder melding).
 - **Gevolgen:** Worker-key krijgt `connections:read` en `connections:list`. Nieuwe statusreden `account_mismatch`. Isolatietests per route zoals in docs/integrations.md §2.5. Een monitor op de sweep (Sentry Crons).
+
+## #082 Staging met Nango's testapps en een bredere MCP-key
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** docs/integrations.md §6 en #078 gingen uit van een eigen OAuth-app per environment (Google Cloud-project, Entra-app) en een MCP-key `mcp-readonly` zonder `connections:read`. Daniël koos bij het inrichten van staging anders.
+- **Beslissing:** De Nango-integraties `gmail` (provider `google-mail`) en `outlook` op staging gebruiken Nango's eigen developer-apps, zonder eigen client-ID. De Management MCP gebruikt een key met meer rechten dan `mcp-readonly`; het vangnet is de `ask`-permissie op schrijftools (#073).
+- **Alternatieven:** eigen apps nu (meer werk vóór er iets te testen is; blijft nodig vóór productie); de smalle MCP-key (minder leesmogelijkheden bij het debuggen).
+- **Gevolgen:** De scopes liggen vast bij Nango; bij de eerste koppeling blijkt of `gmail.readonly`, `User.Read` en `Mail.Read` erin zitten. Het toestemmingsscherm toont Nango. De callback blijft `api.nango.dev`; de Caddy-redirect `/oauth/callback` werkt pas met een eigen app. Eigen apps (todo-stappen 5, 6, 9) vóór de eerste pilotklant; de Google-verificatie (CASA) vraagt sowieso een eigen app.
+
+## #083 Lokaal één Nango-key voor api en worker
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** #078 noemt aparte keys `local-api` en `local-worker`, maar api en worker lezen lokaal dezelfde `.env` met dezelfde variabele `NANGO_SECRET_KEY`.
+- **Beslissing:** Lokaal één key `local-dev` in staging, met de scopes van `app-api` en `app-worker` samen. Op Railway blijven `app-api` en `app-worker` gescheiden. Tests gebruiken nooit de lokale key: ze zetten vaste testwaarden (`nangoTestEnv`) en mocken Nango.
+- **Alternatieven:** twee variabelen (`NANGO_SECRET_KEY_API`/`_WORKER`) of een eigen env-bestand per app (meer configuratie voor één ontwikkelaar).
+- **Gevolgen:** De lokale key mag iets meer dan elk van beide apps; hij bestaat alleen in staging, dat nooit klantdata bevat.

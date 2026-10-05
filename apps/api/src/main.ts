@@ -5,6 +5,8 @@ import {
   executeActionJobId,
   type MonitoringTestJob,
   monitoringTestJobOptions,
+  type NangoWebhookJob,
+  nangoWebhookJobId,
   parseEnv,
   queueNames,
   testErrorsEnabled,
@@ -28,6 +30,10 @@ const executeQueue = new Queue<ExecuteActionJob>(queueNames.executeAction, {
   connection: queueConnection,
   defaultJobOptions,
 });
+const nangoWebhookQueue = new Queue<NangoWebhookJob>(queueNames.nangoWebhook, {
+  connection: queueConnection,
+  defaultJobOptions,
+});
 // Not in production: there the test procedure does not exist (decision #069).
 const testQueue = testErrorsEnabled(env.SENTRY_ENVIRONMENT)
   ? new Queue<MonitoringTestJob>(queueNames.monitoringTest, {
@@ -46,6 +52,9 @@ const app = await buildApp({
       { tenantId, actionId },
       { jobId: executeActionJobId(actionId, approvedAt) },
     );
+  },
+  enqueueNangoWebhook: async (job) => {
+    await nangoWebhookQueue.add('process', job, { jobId: nangoWebhookJobId(job.deliveryId) });
   },
   enqueueMonitoringTest: async (job) => {
     if (!testQueue) throw new Error('Test errors are disabled in production');
@@ -66,6 +75,7 @@ async function shutdown(signal: string) {
   await Promise.all([
     redis.quit(),
     executeQueue.close(),
+    nangoWebhookQueue.close(),
     testQueue?.close(),
     appDatabase.close(),
     authDatabase.close(),
