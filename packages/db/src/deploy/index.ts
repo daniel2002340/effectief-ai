@@ -8,3 +8,9 @@ export {
   schemaState,
   waitForSchema,
 } from './schema-version.ts';
+export {
+  compareRestore,
+  type RestoreReport,
+  type SqlRunner,
+  verifyRestore,
+} from './verify-restore.ts';

@@ -570,3 +570,27 @@ Format:
 - **Beslissing:** `scrubErrorText()` in packages/shared vervangt e-mailadressen en haalt de waarden weg die de fout zelf onder gevoelige sleutels draagt (ook in `cause`). Gebruikt in `beforeSend` (via `hint.originalException`) en in een `err`-serializer van pino in api en worker. `extraErrorDataIntegration` zet de eigen velden van een fout in het event, waar de sleutels worden gecensureerd. De oRPC-`onError` meldt 5xx met de oorspronkelijke fout. CI bewijst het op de images met `scripts/stack-redaction.sh`.
 - **Alternatieven:** de foutmelding nooit meesturen (onleesbare issues); namen herkennen met een heuristiek (onbetrouwbaar, verminkt tekst).
 - **Gevolgen:** Een naam die alleen in de tekst staat en nergens in de data van de fout, blijft zichtbaar. Wie een fout met persoonsgegevens gooit, zet die gegevens dus ook in een veld met een gevoelige sleutel. De e-mailregex slaat paden met `/` over, zodat stackframes leesbaar blijven.
+
+## #071 Lokale webhooks via een cloudflared quick tunnel; API_TRUST_PROXY=1 in dev
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** Providers moeten webhooks naar de lokale api kunnen sturen. Een tunnel maakt de dev-api publiek, en lokaal staat registratie open (`AUTH_SIGNUP_ALLOWLIST=*`).
+- **Beslissing:** `pnpm tunnel` (`scripts/dev/webhook-tunnel.ts`) start een cloudflared quick tunnel naar een lokale proxy die alleen `/webhooks/*` doorlaat en `X-Forwarded-For` overschrijft met `Cf-Connecting-Ip`. Dev gebruikt `API_TRUST_PROXY=1`, net als staging: één proxy-hop die de header zet. Alleen development: weigert in CI en productie, `scripts/dev` staat in `.dockerignore`. Vaste URL (named tunnel, Cloudflare-account) pas als een provider dat vereist.
+- **Alternatieven:** ngrok (account en limieten op het gratis plan); de tunnel direct op de api (zet login en registratie open); `API_TRUST_PROXY=false` in dev (alle tunnelverkeer deelt de sleutel `127.0.0.1` met de eigen browser).
+- **Gevolgen:** cloudflared is een lokale tool (`brew install cloudflared`), geen dependency. Zonder tunnel stuurt niemand `X-Forwarded-For` naar de dev-api, dus `1` verandert lokaal niets. CI blijft op `false`.
+
+## #072 verify-restore via railway ssh, read-only als superuser
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** De restore-oefening (docs/deployment.md §7.3) vraagt een vergelijking van de herstelde database met de bron. Postgres heeft geen TCP proxy, en RLS verbergt rijen voor elke rol behalve de superuser.
+- **Beslissing:** `scripts/deploy/verify-restore.ts` stuurt vaste SQL via `railway ssh` naar `psql` in beide Postgres-containers, met `default_transaction_read_only=on`, als de superuser van de container. Vergelijkt migraties, tabellen, rijen van vóór het hersteltijdstip, een gehashte steekproef, geforceerde RLS en de login-rollen. Output: alleen namen, aantallen en ID's. De logica staat in `packages/db/src/deploy/verify-restore.ts`, getest in `apps/migrate`.
+- **Alternatieven:** een tijdelijke job op het privénetwerk met eigenaar-credentials (nog een plek met die credentials, #064); een TCP proxy (database publiek).
+- **Gevolgen:** Wie het script draait heeft de Railway-CLI met een geregistreerde SSH-sleutel nodig (docs/operations.md). Werkt ook voor productie, maar daar is steekproef-SQL als superuser op klantdata een bewuste handeling.
+
+## #073 Spelregels voor agents bij externe accounts (Nango eerst)
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** Nango's coding-agent-setup is ingericht: Docs MCP, Management MCP (beta, user-scope, API key), skill `building-nango-functions` en de CLI. Daarmee kan een agent integraties wijzigen, functions deployen en via providers handelen.
+- **Beslissing:** Regels in CLAUDE.md, sectie "Externe accounts": alleen de Nango staging-environment, die nooit klantdata bevat; deploys naar staging via CI na merge, vanaf de laptop alleen met toestemming; lezen mag, schrijven alleen met toestemming per keer; fixtures uit echte data geanonimiseerd. Afgedwongen in `.claude/settings.json`: `nango-docs` toegestaan, `nango-management` altijd `ask`, `deny` op `.env*` (behalve `.env.example`), `~/.claude.json` en Bash-commando's met `KEY`, `SECRET` of `TOKEN` of die de omgeving tonen. gitleaks krijgt regels `nango-secret-key` en `bearer-uuid`.
+- **Alternatieven:** alleen afspraken zonder permissies (een agent in auto-mode leest ze niet af); een aparte API key zonder schrijfrechten (biedt Nango niet per tool).
+- **Gevolgen:** Bash-deny is case-sensitive en geen harde grens (`bash -c`, andere schrijfwijzen); de regels zijn de afspraak, de permissies het vangnet. Bash-commando's met `KEY`/`SECRET`/`TOKEN` in hoofdletters (ook commitberichten) worden geweigerd. Een `ask` op de hele server overstemt elke `allow` op één tool; leesrechten zonder vragen vereisen dus `ask` per schrijftool. Geldt straks ook voor Railway en Sentry.

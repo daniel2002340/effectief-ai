@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "nango-docs": {
+      "type": "http",
+      "url": "https://nango.dev/docs/mcp"
+    }
+  }
+}

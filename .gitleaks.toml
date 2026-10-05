@@ -1,2 +1,20 @@
 [extend]
 useDefault = true
+
+# Nango secret keys are UUIDs. The default generic-api-key rule catches
+# `NANGO_SECRET_KEY_*=...` only through entropy; these rules do not depend on it.
+[[rules]]
+id = "nango-secret-key"
+description = "Nango secret key assigned to a Nango-named variable or option"
+regex = '''(?i)nango[\w.\-]{0,40}?(?:secret|key|token)[\w.\-]{0,20}['"]?\s*[:=]\s*['"]?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[A-Za-z0-9_\-]{24,})'''
+secretGroup = 1
+keywords = ["nango"]
+
+# The Nango Management MCP takes the key as a bearer header (e.g. in .mcp.json),
+# where the line itself does not mention Nango.
+[[rules]]
+id = "bearer-uuid"
+description = "UUID used as a bearer token (Nango API key in an MCP or HTTP config)"
+regex = '''(?i)bearer\s+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b'''
+secretGroup = 1
+keywords = ["bearer"]
