@@ -58,13 +58,13 @@ jobs:
           VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
         run: |
           set -eu
-          build() { # <image name> <Dockerfile app dir> <Sentry project or ->
+          build() { # <image name> <Dockerfile app dir> <Sentry project or -> [build target]
             image="$REGISTRY/effectief-$1:$SHA"
             if docker manifest inspect "$image" > /dev/null 2>&1; then
               echo "$image exists"; return
             fi
             upload=true; [ "$3" = - ] && upload=false
-            docker build -f "apps/$2/Dockerfile" \
+            docker build -f "apps/$2/Dockerfile" ${4:+--target "$4"} \
               --secret id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
               --build-arg APP_RELEASE="$SHA" \
               --build-arg SENTRY_UPLOAD="$upload" \
@@ -78,6 +78,7 @@ jobs:
             docker push "$image"
           }
           build migrate migrate -
+          build verify migrate - verify
           build api api api
           build worker worker worker
           build edge web web

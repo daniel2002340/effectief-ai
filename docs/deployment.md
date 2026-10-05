@@ -2,7 +2,7 @@
 
 Hoe EffectiefAI draait op Railway, eerst als staging (`staging.effectiefai.nl`), later als productie in een eigen environment (bijv. `app.effectiefai.nl`).
 
-**Status:** gebouwd in sessie 3, nog niet uitgerold. Keuzes van Daniël: #054–#056; voorstellen: #057–#059, #061–#063.
+**Status:** gebouwd in sessie 3, nog niet uitgerold. Keuzes van Daniël: #054–#056; voorstellen: #057–#059, #061–#064; lokale stack en verify-job: #065.
 
 Uitgangspunt: **de app weet niet dat hij op Railway draait.** Alles wat Railway-specifiek is staat in `.railway/` en `.github/workflows/deploy-staging.yml`; de Dockerfiles en pre-deploy-scripts zijn generiek. Overstappen naar een andere host is dan nieuwe infra-config, geen appwijziging (#054).
 
@@ -15,7 +15,7 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
 | Onderwerp | Bevinding | Gevolg voor het ontwerp |
 |---|---|---|
 | Config-as-code | `railway.json`/`railway.toml` zijn **deprecated** en worden vanaf **2026-12-01 niet meer gelezen**. Nieuwe services kunnen er niet meer voor kiezen. Opvolger: Infrastructure as Code in `.railway/railway.ts` met `railway config plan` / `apply` ([IaC](https://docs.railway.com/infrastructure-as-code), [referentie](https://docs.railway.com/infrastructure-as-code/reference)). | Geen `railway.json`. We gebruiken `.railway/railway.ts` (#061). |
-| IaC-mogelijkheden | `service()` met `source: image(...)` of `github(...)`, `start`, `preDeploy`, `healthcheck`, `replicas`, `domains`, `env`, `volumeMounts`; `postgres()`, `redis()`, `volume()`; variabelen via `db.env.X`, `ctx.shared.X`, `preserve()`; `ctx.isEnvironment(name)`. Restart policy, TCP proxy en "wait for CI" staan niet in de referentie. Officiële GitHub Action: [`railwayapp/config`](https://github.com/railwayapp/config) (plan op PR, apply na merge). | Wat IaC niet dekt (restart policy, TCP proxy uit, PITR) is een handmatige stap in docs/todo.md. |
+| IaC-mogelijkheden | `service()` met `source: image(...)` of `github(...)`, `start`, `preDeploy`, `healthcheck`, `replicas`, `domains`, `env`, `volumeMounts`; `postgres()`, `redis()`, `volume()`; variabelen via `db.env.X`, `ctx.shared.X`, `preserve()`; `ctx.isEnvironment(name)`; restart policy via `deploy.restartPolicyType`. TCP proxy en "wait for CI" staan niet in de referentie. Officiële GitHub Action: [`railwayapp/config`](https://github.com/railwayapp/config) (plan op PR, apply na merge). | Wat IaC niet dekt (TCP proxy uit, PITR, registry-credentials) is een handmatige stap in docs/todo.md. |
 | Dockerfile-builds | Builder `DOCKERFILE` met `dockerfilePath` ([config-as-code](https://docs.railway.com/reference/config-as-code)). Private networking is **niet beschikbaar tijdens de build** ([how it works](https://docs.railway.com/networking/private-networking/how-it-works)). | Migreren kan niet in de build; zie §2. |
 | Images uit een registry | Docker Hub, GHCR, Quay, GitLab. **Private images vereisen het Pro-plan**; voor GHCR een classic PAT ([services](https://docs.railway.com/guides/services)). Een nieuwe tag wordt gestaged en niet vanzelf uitgerold; programmatisch via de GraphQL-API (`serviceInstanceUpdate` + `serviceInstanceDeployV2`, daarna status pollen; [API](https://docs.railway.com/integrations/api), [forum](https://station.railway.com/questions/deploying-pre-built-images-from-git-hub-a-d4ac84bd)). GHCR-opslag en -verkeer zijn nu gratis ([GitHub](https://docs.github.com/en/billing/concepts/product-billing/github-packages)). | CI bouwt images; één IaC-apply zet de nieuwe tag (#064). Pro-plan nodig. |
 | Pre-deploy command | Draait na de build en vóór de deploy, **in een aparte container met de env-variabelen van de service**, op het privénetwerk. Faalt hij, dan geen retry en gaat de deploy niet door ([pre-deploy](https://docs.railway.com/guides/pre-deploy-command)). | Niet op de api zetten (eigenaar-credentials zouden in de api-omgeving staan). Wel op een eigen migratieservice (§2). |
@@ -54,9 +54,9 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
         │ pgvector, PITR) │     │ (Railway)    │
         └──▲──────────────┘     └──────────────┘
            │ alleen tijdens een deploy
-        ┌──┴──────────────┐
-        │ migrate (job)   │
-        └─────────────────┘
+        ┌──┴──────────────┐     ┌──────────────┐
+        │ migrate (job)   │     │ verify (job) │ app- en auth-rol,
+        └─────────────────┘     └──────────────┘ alleen staging
 ```
 
 | Service | Bron | Publiek | Replica's | Volume |
@@ -65,6 +65,7 @@ Wat ik vond en wat het ontwerp stuurt. Alles hieronder is gelezen in de actuele 
 | `api` | image `effectief-api:<sha>` | nee | 1 | – |
 | `worker` | image `effectief-worker:<sha>` | nee | 1 | – |
 | `migrate` | image `effectief-migrate:<sha>` | nee | 1 (draait alleen bij deploy) | – |
+| `verify` | image `effectief-verify:<sha>` | nee | 1 (draait alleen bij deploy; niet in productie) | – |
 | `postgres` | Railway's Postgres (`postgres-ssl:17`) | nee, TCP proxy uit | 1 | ja |
 | `redis` | Railway's Redis (`railwayapp/redis:8.2`) | nee | 1 | ja |
 
@@ -150,10 +151,19 @@ Een pre-deploy command op `api` zou draaien met de variabelen van `api`, dus dan
 De volgorde wordt afgedwongen door de pre-deploy commands, niet door de workflow (#064). Railway mag alle services tegelijk uitrollen:
 
 1. `migrate` voert in zijn pre-deploy de migraties uit.
-2. `api` en `worker` draaien in hun pre-deploy `node dist/check-schema.js`: **als app-rol** peilen ze elke 5 s of `drizzle.__drizzle_migrations` de nieuwste migratie uit hun build bevat (ingebakken bij de build, uit het journal). Pas dan start de nieuwe versie; tot die tijd draait de oude door. Na 15 minuten faalt de deploy. Daarvoor heeft `app_runtime` alleen `SELECT` op die tabel (migratie 0015).
+2. `api` en `worker` draaien in hun pre-deploy `node dist/check-schema.js`: **als app-rol** peilen ze elke 5 s of `drizzle.__drizzle_migrations` de nieuwste migratie uit hun build bevat (ingebakken bij de build, uit het journal). Pas dan start de nieuwe versie; tot die tijd draait de oude door. Na 15 minuten faalt de deploy. Daarvoor heeft `app_runtime` alleen `SELECT` op die tabel (migratie 0015). Bestaat de login-rol nog niet (eerste deploy: `migrate` maakt hem aan, mogelijk na de start van deze check) of klopt het wachtwoord niet, dan wacht de check ook en logt hij `state: no-login`. Gevonden met de lokale stack (§3.4).
 3. `edge` wacht in zijn pre-deploy (`edge-wait-for-api`) tot de api op het privénetwerk via `/health` dezelfde release meldt als de edge zelf. Zo komt een nieuwe web-app nooit live vóór de api waar hij bij hoort.
 
 Dit geldt ook voor een handmatige redeploy in het dashboard: nieuwe code start nooit op een schema zonder zijn migratie.
+
+### 2.6 Verify-job: RLS en rollen op de echte database
+
+Zonder TCP proxy kan niemand van buiten de staging-database bereiken, dus de tests gaan naar de database toe (#065):
+
+- Image `effectief-verify:<sha>`: stage `verify` van `apps/migrate/Dockerfile`, de workspace met vitest (±700 MB, alleen voor deze job).
+- Draait `packages/db/vitest.verify.config.ts`: `roles`, `with-tenant`, de isolatietests van feed, memory en knowledge, en `memory/grants`. Ze verbinden alleen als `effectief_app` en `effectief_auth`; `verify` krijgt geen eigenaar-credentials (test op `.railway/railway.ts`).
+- Pre-deploy `node scripts/wait-for-schema.ts` (zelfde wachten als api en worker); start = de tests; restart `NEVER`. Resultaat staat in de deploy-log van `verify`; een rode test geeft een mislukte deploy van `verify` (met Railway's e-mail), de andere services draaien gewoon door.
+- Bij elke deploy op staging; niet in productie, omdat de tests eigen testtenants aanmaken (en daarna weer verwijderen).
 
 ### 2.5 Migraties en de draaiende versie
 
@@ -176,7 +186,7 @@ Stappen:
 
 | # | Stap | Faalt → |
 |---|---|---|
-| 1 | Images bouwen en pushen naar GHCR: `effectief-{migrate,api,worker,edge}:<sha>`, met `APP_RELEASE=<sha>`. Source maps naar Sentry vanuit de build-stage (§6). Bestaat een image al (terugdraaien), dan wordt hij hergebruikt. | stop, niets veranderd |
+| 1 | Images bouwen en pushen naar GHCR: `effectief-{migrate,verify,api,worker,edge}:<sha>`, met `APP_RELEASE=<sha>`. Source maps naar Sentry vanuit de build-stage (§6). Bestaat een image al (terugdraaien), dan wordt hij hergebruikt. | stop, niets veranderd |
 | 2 | `railway config plan`, daarna `railway config apply --yes` met `IMAGE_TAG=<sha>`. Zonder `--confirm-destructive`: een apply die iets zou verwijderen faalt. | stop |
 | 3 | Railway rolt uit; de pre-deploys zorgen voor migrate → api/worker → edge (§2.4). Faalt een stap, dan blijft de vorige versie van die service draaien. | zie Railway en Sentry |
 | 4 | Sentry: deploy van release `<sha>` op `staging` markeren. | workflow rood |
@@ -199,6 +209,19 @@ Waarom niet Railway zelf laten bouwen vanuit GitHub: dan bouwt elke service los,
 - **Migraties gaan alleen vooruit.** Een gedraaide migratie wordt nooit teruggedraaid. Dankzij §2.5 werkt de vorige code op het nieuwe schema. Moet het schema terug, dan is dat een **nieuwe migratie** in een nieuwe PR, die gewoon door de flow gaat.
 - **Data stuk door een migratie** (bijv. een verkeerde `UPDATE`): PITR naar het moment vóór de deploy (§7). Het tijdstip staat in de deploy-log van `migrate` in Railway.
 - Een rollback van `migrate` zelf is zinloos: drizzle slaat al toegepaste migraties over.
+
+### 3.4 Lokaal nabootsen
+
+`docker-compose.stack.yml` start dezelfde images met de env uit `.railway/railway.ts` tegen de Postgres en Valkey van `docker-compose.yml` (#065). Een eigen database `effectief_stack` met login-rollen `stack_app`/`stack_auth` (login-rollen gelden voor het hele cluster; zo blijven de dev-rollen en hun wachtwoorden ongemoeid) en Valkey-database 1. Pre-deploys draaien vóór het start-command, net als op Railway, en alle services starten tegelijk.
+
+```
+pnpm stack:up       images van deze commit bouwen en starten (edge op http://localhost:8088)
+pnpm stack:smoke    /health met de release, 401 zonder sessie, noindex, robots.txt, geen source maps
+pnpm stack:verify   de verify-job (§2.6) tegen effectief_stack
+pnpm stack:down     stack-containers weg; postgres en valkey blijven draaien
+```
+
+Verschillen met staging: geen TLS (dus inloggen in de browser werkt niet: `APP_ORIGIN` moet in productie-modus https zijn, de edge is lokaal http), geen `X-Real-IP` van Railway's edge (het client-IP-gedrag van §4.3 is alleen op staging te testen), Valkey 8 in plaats van Redis 8.2, `pgvector/pgvector:pg17` in plaats van `postgres-ssl:17`. CI draait hetzelfde in de job `Images and local stack`.
 
 ---
 
@@ -248,6 +271,8 @@ Railway-referenties: `${{service.VAR}}` en `${{shared.VAR}}`. "Secret" = sealed 
 | `SENTRY_ENVIRONMENT` | nee | nieuw; `staging` |
 
 **worker**: `NODE_ENV`, `LOG_LEVEL`, `DATABASE_URL`, `REDIS_URL`, `SENTRY_DSN` (project `worker`), `SENTRY_ENVIRONMENT`. Geen `DATABASE_AUTH_URL`: de worker heeft de auth-tabellen niet nodig.
+
+**verify** (alleen staging): `NODE_ENV=test`, `DATABASE_URL` en `DATABASE_AUTH_URL` als bij migrate.
 
 **edge**
 

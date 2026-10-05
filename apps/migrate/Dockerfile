@@ -14,6 +14,18 @@ ARG APP_RELEASE
 # Bundle plus production node_modules, the same way the CI smoke test does it (decision #028).
 RUN scripts/deploy-app.sh migrate /out
 
+# The verify job (decision #065): the RLS and role tests of packages/db against
+# a deployed database, as the app and auth roles only. Needs the sources and
+# vitest, so it is the workspace itself, not a bundle. Build with --target verify.
+FROM node:24.21.0-alpine AS verify
+ENV NODE_ENV=test
+COPY --from=build --chown=node:node /repo /repo
+WORKDIR /repo/packages/db
+USER node
+# Pre-deploy on the host: node scripts/wait-for-schema.ts
+CMD ["node_modules/.bin/vitest", "run", "--config", "vitest.verify.config.ts"]
+
+# The migration job; the default target.
 FROM node:24.21.0-alpine
 ENV NODE_ENV=production
 WORKDIR /app

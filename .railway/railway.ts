@@ -110,9 +110,24 @@ export default defineRailway((ctx) => {
     },
   });
 
+  // The RLS and role tests of packages/db against this database, on every
+  // deploy, as the app and auth roles only (decision #065). Not in production:
+  // the tests write (and delete) tenants of their own. Result in its deploy log.
+  const verify = service('verify', {
+    source: app('verify'),
+    preDeploy: 'node scripts/wait-for-schema.ts',
+    replicas: one,
+    deploy: { restartPolicyType: 'NEVER' },
+    env: {
+      NODE_ENV: 'test',
+      DATABASE_URL: databaseUrl,
+      DATABASE_AUTH_URL: databaseAuthUrl,
+    },
+  });
+
   return project('effectiefai', {
     // Both exist in Railway; listing them keeps an apply from touching either one's existence.
     environments: ['staging', 'production'],
-    resources: [postgres, queue, migrate, api, worker, edge],
+    resources: [postgres, queue, migrate, api, worker, edge, ...(production ? [] : [verify])],
   });
 });

@@ -102,6 +102,20 @@ describe('.railway/railway.ts', () => {
     expect(byName('edge').deploy?.preDeployCommand).toEqual(['edge-wait-for-api']);
   });
 
+  it('runs the RLS and role tests on staging as the runtime roles, not in production', async () => {
+    const { byName } = await render('staging');
+    const verify = byName('verify');
+    expect(verify.source?.image).toBe(`ghcr.io/daniel2002340/effectief-verify:${tag}`);
+    expect(verify.deploy).toMatchObject({
+      preDeployCommand: ['node scripts/wait-for-schema.ts'],
+      restartPolicyType: 'NEVER',
+    });
+    expect(verify.variables?.DATABASE_URL?.value).toMatch(/^postgresql:\/\/effectief_app:/);
+    expect(verify.variables?.DATABASE_AUTH_URL?.value).toMatch(/^postgresql:\/\/effectief_auth:/);
+    const { resources } = await render('production');
+    expect(resources.map((r) => r.name)).not.toContain('verify');
+  });
+
   it('keeps secrets out of the file', async () => {
     const { byName } = await render('staging');
     for (const key of ['BETTER_AUTH_SECRET', 'AUTH_SIGNUP_ALLOWLIST', 'SENTRY_DSN']) {

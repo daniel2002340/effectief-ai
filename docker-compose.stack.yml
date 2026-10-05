@@ -1,0 +1,115 @@
+# The staging setup on this machine (decision #065): the same images and
+# environment as .railway/railway.ts, against the Postgres and Valkey of
+# docker-compose.yml, in a database of their own (effectief_stack) with login
+# roles of their own, so the dev roles and their passwords stay untouched.
+# Passwords here are not secrets.
+#
+#   pnpm stack:up        build the images of this commit and start everything
+#   pnpm stack:verify    the RLS and role tests, as the verify job runs them
+#   pnpm stack:down
+#
+# Pre-deploy commands run before the start command, as on the host. There is
+# no TLS: the edge listens on http://localhost:8088.
+services:
+  # Not on the host: Railway creates the database itself.
+  stack-database:
+    image: pgvector/pgvector:pg17
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGPASSWORD: effectief
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        psql -h postgres -U effectief -tAc "select 1 from pg_database where datname = 'effectief_stack'" | grep -q 1
+        || psql -h postgres -U effectief -c "create database effectief_stack"
+
+  migrate:
+    build: &stack-build
+      context: .
+      dockerfile: apps/migrate/Dockerfile
+      args: &stack-args
+        APP_RELEASE: ${STACK_RELEASE:?run via pnpm stack:up, which sets STACK_RELEASE}
+    image: effectief-migrate:stack
+    depends_on:
+      stack-database: { condition: service_completed_successfully }
+    environment:
+      <<: &stack-common
+        NODE_ENV: production
+        LOG_LEVEL: info
+      DATABASE_MIGRATION_URL: postgresql://effectief:effectief@postgres:5432/effectief_stack
+      DATABASE_URL: &stack-database-url postgresql://stack_app:local-stack-app-password-not-a-secret@postgres:5432/effectief_stack
+      DATABASE_AUTH_URL: &stack-auth-url postgresql://stack_auth:local-stack-auth-password-not-a-secret@postgres:5432/effectief_stack
+    # Pre-deploy, then the start command.
+    command: [sh, -c, "node dist/main.js && exec node dist/status.js"]
+
+  api:
+    build:
+      <<: *stack-build
+      dockerfile: apps/api/Dockerfile
+    image: effectief-api:stack
+    depends_on:
+      valkey: { condition: service_healthy }
+    environment:
+      <<: [*stack-common, &stack-monitoring { SENTRY_DSN: disabled, SENTRY_ENVIRONMENT: stack }]
+      API_HOST: "::"
+      API_PORT: "3000"
+      PORT: "3000"
+      API_TRUST_PROXY: "1"
+      # Production requires https; locally the edge is plain http.
+      APP_ORIGIN: https://localhost:8088
+      DATABASE_URL: *stack-database-url
+      DATABASE_AUTH_URL: *stack-auth-url
+      REDIS_URL: &stack-redis-url redis://valkey:6379/1
+      BETTER_AUTH_SECRET: local-stack-only-not-a-real-secret-value
+      AUTH_SIGNUP_ALLOWLIST: "@example.test"
+    command: [sh, -c, "node dist/check-schema.js && exec node --enable-source-maps dist/main.js"]
+
+  worker:
+    build:
+      <<: *stack-build
+      dockerfile: apps/worker/Dockerfile
+    image: effectief-worker:stack
+    depends_on:
+      valkey: { condition: service_healthy }
+    environment:
+      <<: [*stack-common, *stack-monitoring]
+      DATABASE_URL: *stack-database-url
+      REDIS_URL: *stack-redis-url
+    command: [sh, -c, "node dist/check-schema.js && exec node --enable-source-maps dist/main.js"]
+
+  edge:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_PATH: /api
+        VITE_SENTRY_DSN: disabled
+        VITE_SENTRY_ENVIRONMENT: stack
+        VITE_APP_RELEASE: ${STACK_RELEASE:?run via pnpm stack:up, which sets STACK_RELEASE}
+    image: effectief-edge:stack
+    environment:
+      PORT: "8080"
+      API_UPSTREAM: api:3000
+    ports:
+      - "8088:8080"
+    entrypoint: [sh, -c, "edge-wait-for-api && exec edge-entrypoint"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 150
+
+  # Only on demand (pnpm stack:verify), like the job on the host.
+  verify:
+    profiles: [verify]
+    build:
+      <<: *stack-build
+      target: verify
+    image: effectief-verify:stack
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: *stack-database-url
+      DATABASE_AUTH_URL: *stack-auth-url
+    command: [sh, -c, "node scripts/wait-for-schema.ts && exec node_modules/.bin/vitest run --config vitest.verify.config.ts"]

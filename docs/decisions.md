@@ -522,3 +522,11 @@ Format:
 - **Beslissing:** Na groene CI op main bouwt `deploy-staging.yml` de images (`:<sha>`) en doet één `railway config apply` met `IMAGE_TAG=<sha>`. De volgorde komt uit de pre-deploys: `migrate` migreert; api en worker wachten als app-rol tot hun nieuwste migratie in de database staat (max. 15 min); de edge wacht tot `/health` van de api zijn release meldt. Alleen `migrate` heeft eigenaar-credentials (test op `.railway/railway.ts`). Railway's Redis in plaats van een eigen Valkey-service.
 - **Alternatieven:** per service uitrollen en pollen via GraphQL (#058; ongetest, en dubbel met IaC); alleen Wait for CI (geen volgorde).
 - **Gevolgen:** Ook een handmatige redeploy start nooit op een oud schema. `/health` geeft de release (git-SHA) terug. De workflow wacht niet op het einde van de uitrol; dat ziet Daniël in Railway en Sentry.
+
+## #065 Lokale stack en verify-job tegen de echte database
+- **Datum:** 2026-10-05
+- **Status:** geaccepteerd
+- **Context:** De staging-opzet (images, pre-deploys, rollen, edge) was alleen los getest. De RLS- en roltests moeten ook tegen de staging-database draaien, zonder TCP proxy.
+- **Beslissing:** `docker-compose.stack.yml` start dezelfde images met de env van `.railway/railway.ts` tegen de lokale Postgres (eigen database `effectief_stack`, eigen login-rollen) en Valkey; CI draait die stack met een smoketest door de edge. Image `effectief-verify` (stage `verify` in `apps/migrate/Dockerfile`) draait de RLS- en roltests van packages/db als app- en auth-rol; op Railway service `verify` bij elke deploy op staging (restart `NEVER`, resultaat in de deploy-log), niet in productie.
+- **Alternatieven:** Tests via een TCP proxy vanaf een laptop (database publiek); verify alleen op verzoek (een apply zonder de service wil hem verwijderen en faalt).
+- **Gevolgen:** De tests maken op staging testtenants aan en ruimen ze op. De image-matrix in CI is vervangen door de stack-job. Registry-credentials ook voor `verify`.
