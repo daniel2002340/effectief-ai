@@ -3,7 +3,7 @@ import { createDatabase } from '@effectief/db';
 import { defaultJobOptions, parseEnv, queueNames } from '@effectief/shared';
 import { Queue, QueueEvents } from 'bullmq';
 import { pino } from 'pino';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 import { workerEnvSchema } from '../src/env.ts';
 import { processExampleJob } from '../src/jobs/example.ts';
@@ -71,6 +71,12 @@ describe('example queue (Valkey)', () => {
     reported.length = 0;
     const retried = await queue.add('example', { note: 'no tenant' }, { attempts: 2, backoff: 0 });
     await expect(retried.waitUntilFinished(events, 10_000)).rejects.toThrow();
-    expect(reported).toEqual([{ queue: queueNames.example, jobId: retried.id, attempts: 2 }]);
+    // The queue event can arrive before the worker's own failed handler has
+    // run, and the previous test's job may report late: wait for this job only.
+    await vi.waitFor(() =>
+      expect(reported.filter((context) => context.jobId === retried.id)).toEqual([
+        { queue: queueNames.example, jobId: retried.id, attempts: 2 },
+      ]),
+    );
   });
 });
