@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 const tag = 'a'.repeat(40);
 type Resource = {
   name: string;
+  config?: unknown;
   type: string;
   source?: { image?: string };
   deploy?: { preDeployCommand?: string[]; restartPolicyType?: string };
@@ -76,13 +77,15 @@ describe('.railway/railway.ts', () => {
     expect(byName('worker').variables?.DATABASE_AUTH_URL).toBeUndefined();
   });
 
-  it('exposes no service publicly from the file, with no TCP proxies anywhere', async () => {
-    // The edge's domain is added in the dashboard first (decision #066).
+  it('exposes only the edge publicly, with no TCP proxies anywhere', async () => {
     const { resources } = await render('staging');
     const publicServices = resources.filter(
       (r) => Object.keys(r.networking?.customDomains ?? {}).length > 0,
     );
-    expect(publicServices.map((r) => r.name)).toEqual([]);
+    expect(publicServices.map((r) => r.name)).toEqual(['edge']);
+    expect(Object.keys(publicServices[0]?.networking?.customDomains ?? {})).toEqual([
+      'staging.effectiefai.nl',
+    ]);
     expect(resources.filter((r) => r.networking?.tcpProxies)).toEqual([]);
   });
 
@@ -112,6 +115,11 @@ describe('.railway/railway.ts', () => {
     expect(verify.variables?.DATABASE_AUTH_URL?.value).toMatch(/^postgresql:\/\/effectief_auth:/);
     const { resources } = await render('production');
     expect(resources.map((r) => r.name)).not.toContain('verify');
+  });
+
+  it('keeps the PITR archive of staging, in Amsterdam', async () => {
+    const { byName } = await render('staging');
+    expect(byName('Postgres-PITR')).toMatchObject({ type: 'bucket', config: { region: 'ams' } });
   });
 
   it('keeps secrets out of the file', async () => {

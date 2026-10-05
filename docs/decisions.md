@@ -546,3 +546,11 @@ Format:
 - **Beslissing:** Na het aanmaken van een database (ook straks in productie) regio en image controleren en, zolang hij leeg is, corrigeren met een tweede apply en een nieuw volume. Geen registry-credentials en geen Pro-plan zolang de repository publiek is.
 - **Alternatieven:** de databases met de hand in het dashboard aanmaken (buiten IaC); de repository of de packages privé maken (dan wel credentials en Pro, #058).
 - **Gevolgen:** Wordt de repository privé, dan eerst registry-credentials zetten, anders faalt de volgende deploy. Een test op de gerenderde config bewijst niet wat Railway aanmaakt; het verify- en statuswerk na een deploy blijft nodig.
+
+## #068 Door Railway aangemaakte resources in IaC opnemen
+- **Datum:** 2026-10-05
+- **Status:** voorgesteld
+- **Context:** PITR aanzetten maakte bucket `Postgres-PITR` (regio `ams`) aan. Die stond niet in `.railway/railway.ts`, dus de volgende apply wilde hem verwijderen; de workflow weigerde dat (geen `--confirm-destructive`). Het domein van `edge`, eerst in het dashboard toegevoegd (#066), accepteert IaC daarna wel in de file zonder wijziging.
+- **Beslissing:** Alles wat Railway of het dashboard aanmaakt en moet blijven (PITR-bucket, domein) komt na het aanmaken in `railway.ts`, gecontroleerd met een `config plan` zonder destroy. Bucket voorlopig alleen voor staging; productie krijgt hem na het aanzetten van PITR daar.
+- **Alternatieven:** applies met `--confirm-destructive` (zou de WAL-archieven verwijderen).
+- **Gevolgen:** Een handmatige wijziging in het dashboard blokkeert de volgende deploy tot ze in de file staat; dat is bedoeld.
