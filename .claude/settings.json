@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": ["mcp__nango-docs"],
+    "ask": ["mcp__nango-management"],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(!.env.example)",
+      "Read(~/.claude.json)",
+      "Bash(* .env)",
+      "Bash(* .env *)",
+      "Bash(* .env.*)",
+      "Bash(*/.env)",
+      "Bash(*/.env *)",
+      "Bash(*/.env.*)",
+      "Bash(* ~/.claude.json*)",
+      "Bash(env)",
+      "Bash(printenv)",
+      "Bash(printenv *)",
+      "Bash(export)",
+      "Bash(export -p)",
+      "Bash(set)",
+      "Bash(declare -x)",
+      "Bash(claude mcp get *)",
+      "Bash(*KEY*)",
+      "Bash(*SECRET*)",
+      "Bash(*TOKEN*)"
+    ]
+  }
+}

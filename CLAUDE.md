@@ -104,6 +104,20 @@ Deze regels gelden altijd. Wijk er alleen van af als de gebruiker dat expliciet 
 - Valideer alle input met Zod: requests, webhooks, job-payloads.
 - Persoonsgegevens alleen opslaan als de functie het nodig heeft (dataminimalisatie).
 
+## Externe accounts
+
+Regels voor wat een agent mag bij externe diensten (#073). Permissies staan in `.claude/settings.json`.
+
+- **Nango: alleen de staging-environment.** Nooit de keys van de production-environment gebruiken, opvragen of in bestanden zetten. Ook als een tool de production-environment laat zien: geen calls met `environment: prod`.
+- De Nango staging-environment bevat nooit klantdata: alleen Daniëls eigen mailboxen en testaccounts. Echte klanten (ook pilotklanten) komen uitsluitend in production.
+- Staging wordt gedeeld door lokaal ontwikkelen en staging.effectiefai.nl. Functions deployen naar Nango-staging gebeurt via CI na merge naar `main`; vanaf de laptop alleen na Daniëls expliciete toestemming (bijv. om iets uit te proberen).
+- **Docs MCP (`nango-docs`) en de skill `building-nango-functions`:** vrij te gebruiken; raadpleeg ze vóór je Nango-code schrijft.
+- **Management MCP (`nango-management`) en CLI, lezen** (integraties, connecties, sync-status, records, logs): mag, om te verifiëren en fixtures te maken.
+- **Management MCP en CLI, schrijven:** eerst toestemming, per keer. Dat geldt voor integraties wijzigen, functions deployen, syncs starten of pauzeren, connecties verwijderen, en zeker voor alles wat iets bij een provider doet (actions draaien, mail versturen, concept maken).
+- Fixtures uit echte data worden geanonimiseerd vóór ze in de repo komen: namen, e-mailadressen, telefoonnummers en herleidbare bedragen vervangen; inhoud vervangen door neutrale tekst met dezelfde structuur.
+- Secrets nooit tonen, loggen of committen; ook niet in commando-uitvoer of foutmeldingen. Lees geen `.env`-bestanden en geen env-variabelen met `KEY`, `SECRET` of `TOKEN` in de naam; tools lezen die zelf uit de omgeving.
+- Dezelfde regels gelden straks voor Railway en Sentry.
+
 ## Domeinbegrippen
 
 - **tenant**: een klantbedrijf. **user**: een persoon; via **membership** lid van een tenant (owner of member).
