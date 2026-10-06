@@ -196,5 +196,4 @@ const sync = createSync({
   },
 });
 
-export type NangoSyncLocal = Parameters<(typeof sync)['exec']>[0];
 export default sync;

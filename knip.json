@@ -14,6 +14,9 @@
     },
     "packages/db": {
       "entry": ["scripts/*.ts"]
+    },
+    "packages/integrations/nango-integrations": {
+      "entry": ["index.ts", "*/syncs/*.ts", "*/actions/*.ts", "*/on-events/*.ts", "scripts/*.ts"]
     }
   },
   "ignoreBinaries": ["cloudflared"],

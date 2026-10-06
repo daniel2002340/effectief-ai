@@ -1,12 +1,15 @@
 // Nango webhook bodies for tests.
 //
-// NOT CAPTURED FROM REAL WEBHOOKS. These follow the examples in the Nango docs
-// (guides/platform/webhooks-from-nango, read 2026-10-05): the staging
-// environment had sent no webhook yet, so its logs held nothing to capture.
-// Replace them with anonymized real bodies after the first connection on
-// staging (docs/todo.md). Unknown from the docs: the exact form of
-// `environment` (the docs show "DEV | PROD") and whether `tags` is present on
-// every auth operation.
+// auth/creation and auth/deletion: captured from the Nango logs of the
+// staging environment (2026-10-06, logs_get_operation), anonymized: every ID,
+// the nonce and the tags replaced by test values, same structure and fields.
+// They settle what the docs left open: `environment` is the environment name
+// in lower case ("staging"), `tags` is present on both, and every auth body
+// carries `from: "nango"`.
+//
+// The others (override, refresh, sync) follow the examples in the Nango docs
+// (guides/platform/webhooks-from-nango, read 2026-10-05) with the same base:
+// staging has not sent them yet. Replace them once it has (docs/todo.md).
 
 const connectionId = '3f2b9c4e-1d7a-4e6b-9a51-0c8d2e7f6a13';
 const tenantId = '0199a1b2-0000-7000-8000-00000000a001';
@@ -14,12 +17,13 @@ const userId = '0199a1b2-0000-7000-8000-00000000b001';
 const nonce = 'a'.repeat(64);
 
 const authBase = {
-  type: 'auth',
-  connectionId,
   authMode: 'OAUTH2',
-  providerConfigKey: 'gmail',
-  provider: 'google-mail',
   environment: 'staging',
+  provider: 'google-mail',
+  connectionId,
+  from: 'nango',
+  type: 'auth',
+  providerConfigKey: 'gmail',
   tags: {
     organization_id: tenantId,
     end_user_id: userId,
@@ -29,7 +33,8 @@ const authBase = {
 
 export const nangoWebhookFixtures = {
   ids: { connectionId, tenantId, userId, nonce },
-  authCreation: { ...authBase, operation: 'creation', success: true },
+  /** Captured on staging. */
+  authCreation: { ...authBase, success: true, operation: 'creation' },
   authOverride: { ...authBase, operation: 'override', success: true },
   authRefreshFailed: {
     ...authBase,
@@ -38,7 +43,8 @@ export const nangoWebhookFixtures = {
     error: { type: 'refresh_token_external_error', description: 'Provider text with a name' },
   },
   authRefreshRecovered: { ...authBase, operation: 'refresh', success: true },
-  authDeletion: { ...authBase, operation: 'deletion', success: true },
+  /** Captured on staging. */
+  authDeletion: { ...authBase, success: true, operation: 'deletion' },
   syncSuccess: {
     type: 'sync',
     connectionId,

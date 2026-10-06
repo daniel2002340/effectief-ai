@@ -6,7 +6,7 @@ import * as z from 'zod';
 // record. Attachments: metadata only, never fetched.
 
 /** The Gmail system labels a record may carry; never names of the user's own labels. */
-export const inboxLabels = [
+const inboxLabels = [
   'INBOX',
   'UNREAD',
   'IMPORTANT',
@@ -142,7 +142,7 @@ function walk(part: GmailPart): GmailPart[] {
 const isAttachment = (part: GmailPart) => Boolean(part.filename);
 
 /** The text/plain part; without one, the HTML part as text. Never an attachment. */
-export function bodyTextOf(payload: GmailPart): string {
+function bodyTextOf(payload: GmailPart): string {
   const parts = walk(payload).filter((part) => !isAttachment(part) && part.body?.data);
   const plain = parts.find((part) => part.mimeType === 'text/plain');
   if (plain?.body?.data) return normalizeWhitespace(decodeBase64Url(plain.body.data));
@@ -155,7 +155,7 @@ export function bodyTextOf(payload: GmailPart): string {
  * Name, type, size and partId only; the content stays at Gmail. Gmail's
  * attachmentId changes with every fetch of the message, the partId does not.
  */
-export function attachmentsOf(payload: GmailPart): InboxMessage['attachments'] {
+function attachmentsOf(payload: GmailPart): InboxMessage['attachments'] {
   return walk(payload)
     .filter((part) => isAttachment(part) && part.partId)
     .map((part) => ({
