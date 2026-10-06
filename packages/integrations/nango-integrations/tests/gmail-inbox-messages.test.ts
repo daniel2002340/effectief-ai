@@ -134,6 +134,72 @@ describe('inbox-messages on recorded Gmail responses: backfill', () => {
   });
 });
 
+/**
+ * gmail-history.json: the history after test mails on staging, from a saved
+ * checkpoint. Drafts written and deleted, a mail with a PDF sent to the
+ * mailbox itself, one mail trashed, one trashed and restored.
+ */
+const history = {
+  startHistoryId: '4770834',
+  pdfToSelf: '1a11196e5c5e90a0',
+  trashed: '1a10bb34c305ea4d',
+  trashedAndRestored: '1a10bcdd09a4d680',
+  drafts: ['1a111966ebe8c0c7', '1a1119670f662718', '1a1119684b60c936', '1a11196e1cb54b3d'],
+};
+
+describe('inbox-messages on recorded Gmail responses: history', () => {
+  const run = async () => {
+    const fixture = loadFixture('gmail-history.json');
+    const fake = fakeNango(fixture, {
+      phase: 'history',
+      historyId: history.startHistoryId,
+      pageToken: '',
+    });
+    await sync.exec(fake.nango);
+    return { ...fake, fixture };
+  };
+
+  it('saves what is in the inbox now and removes what went to the trash', async () => {
+    const { saved, deleted } = await run();
+    expect(saved.map((record) => record.id).sort()).toEqual(
+      [history.pdfToSelf, history.trashedAndRestored].sort(),
+    );
+    expect(deleted).toEqual([history.trashed]);
+  });
+
+  it('leaves drafts alone, also when they are deleted', async () => {
+    const { saved, deleted } = await run();
+    for (const draft of history.drafts) {
+      expect(saved.map((record) => record.id)).not.toContain(draft);
+      expect(deleted).not.toContain(draft);
+    }
+  });
+
+  it('marks history records as new mail, with the PDF as metadata', async () => {
+    const { saved } = await run();
+    const pdf = saved.find((record) => record.id === history.pdfToSelf);
+    expect(pdf?.backfill).toBe(false);
+    expect(pdf?.labels).toContain('INBOX');
+    expect(pdf?.attachments).toEqual([
+      expect.objectContaining({
+        mimeType: 'application/pdf',
+        attachmentId: expect.stringMatching(/^\d+(\.\d+)*$/),
+      }),
+    ]);
+    expect(JSON.stringify(saved)).not.toMatch(TAG);
+  });
+
+  it('moves the checkpoint to the historyId of the last page', async () => {
+    const { checkpoints, fixture } = await run();
+    const page = fixture.api.get['/gmail/v1/users/me/history'] as Mock;
+    expect(checkpoints.at(-1)).toEqual({
+      phase: 'history',
+      historyId: (page.response as { historyId: string }).historyId,
+      pageToken: '',
+    });
+  });
+});
+
 // The app tests its normalization on the records this sync makes from the
 // same responses (packages/integrations/src/mail/fixtures). Kept equal here;
 // UPDATE_FIXTURES=1 rewrites the file after a change to the sync (then run

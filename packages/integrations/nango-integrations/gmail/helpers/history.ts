@@ -22,12 +22,24 @@ export const HistoryListSchema = z.object({
 });
 export type HistoryPage = z.infer<typeof HistoryListSchema>;
 
+/**
+ * Whether a deleted message can have a record: it was in the inbox, trash or
+ * spam. A draft or sent mail that is deleted (drafts are, while writing) never
+ * had one. Without labels we cannot tell, so it goes.
+ */
+function wasRecorded(labelIds: readonly string[] | undefined): boolean {
+  if (!labelIds) return true;
+  return labelIds.some((label) => label === 'INBOX' || label === 'TRASH' || label === 'SPAM');
+}
+
 /** What a page of history means per message: fetch it again, or delete its record. */
 export function changesOf(page: HistoryPage): { fetch: string[]; remove: string[] } {
   // The history is in order; the last change of a message decides.
   const last = new Map<string, 'fetch' | 'remove' | 'skip'>();
   for (const record of page.history ?? []) {
-    for (const { message } of record.messagesDeleted ?? []) last.set(message.id, 'remove');
+    for (const { message } of record.messagesDeleted ?? []) {
+      last.set(message.id, wasRecorded(message.labelIds) ? 'remove' : 'skip');
+    }
     const changed = [
       ...(record.messagesAdded ?? []),
       ...(record.labelsAdded ?? []),
