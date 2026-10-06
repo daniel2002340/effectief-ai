@@ -4,6 +4,7 @@ import { createNangoClient } from '@effectief/integrations/nango';
 import { parseEnv, testErrorsEnabled } from '@effectief/shared';
 import { workerEnvSchema } from './env.ts';
 import { scheduleConnectionSweeps } from './jobs/connections.ts';
+import { scheduleMailIngestSweep } from './jobs/mail-ingest.ts';
 import { scheduleRetention } from './jobs/retention.ts';
 import { createLogger } from './logger.ts';
 import { closeMonitoring, initMonitoring } from './monitoring.ts';
@@ -31,6 +32,7 @@ const started = startWorkers({
 });
 await scheduleRetention(started.retentionQueue);
 await scheduleConnectionSweeps(started.connectionSweepQueue);
+await scheduleMailIngestSweep(started.mailIngestQueue);
 log.info({ queues: started.workers.map((worker) => worker.name) }, 'worker started');
 
 let shuttingDown = false;

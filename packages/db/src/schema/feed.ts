@@ -16,6 +16,7 @@ import {
   connectionStatuses,
   connectionStatusReasons,
   type StoredNangoWebhook,
+  syncModels,
   webhookDeliveryStatuses,
   webhookErrorCodes,
   webhookSources,
@@ -192,6 +193,33 @@ export const webhookDeliveries = pgTable(
       sql`(${t.status} = 'processed') = (${t.processedAt} is not null)`,
     ),
     index('webhook_deliveries_tenant_status_idx').on(t.tenantId, t.status, t.receivedAt),
+    tenantIsolation(t.tenantId),
+  ],
+).enableRLS();
+
+/**
+ * How far the app has read a connection's Nango records, per model
+ * (docs/integrations.md §4.2, #076). The ingest locks the row (FOR UPDATE), so
+ * one ingest runs per connection at a time. Null cursor: from the start.
+ */
+export const syncCursors = pgTable(
+  'sync_cursors',
+  {
+    tenantId: tenantId(),
+    connectionId: uuid('connection_id').notNull(),
+    model: text('model', { enum: syncModels }).notNull(),
+    cursor: text('cursor'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenantId, t.connectionId, t.model] }),
+    foreignKey({
+      name: 'sync_cursors_connection_fk',
+      columns: [t.tenantId, t.connectionId],
+      foreignColumns: [connections.tenantId, connections.id],
+    }).onDelete('cascade'),
+    check('sync_cursors_model', inList(t.model, syncModels)),
     tenantIsolation(t.tenantId),
   ],
 ).enableRLS();

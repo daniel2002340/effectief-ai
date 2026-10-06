@@ -4,6 +4,9 @@ import type { NangoClient } from '@effectief/integrations/nango';
 import {
   connectionSweepJobNames,
   defaultJobOptions,
+  type MailIngestJob,
+  mailIngestDeduplicationId,
+  mailIngestJobNames,
   purgeConnectionJobId,
   queueNames,
   type ReportError,
@@ -22,6 +25,11 @@ import {
 import { processExampleJob } from './jobs/example.ts';
 import { processExecuteActionJob } from './jobs/execute-action.ts';
 import { processForgetEntityJob } from './jobs/forget-entity.ts';
+import {
+  processMailIngestJob,
+  processMailIngestSweep,
+  processMailIngestTenant,
+} from './jobs/mail-ingest.ts';
 import { processMonitoringTestJob } from './jobs/monitoring-test.ts';
 import { processNangoWebhookJob } from './jobs/nango-webhook.ts';
 import { processPurgeConnectionJob } from './jobs/purge-connection.ts';
@@ -50,6 +58,8 @@ export interface StartedWorkers {
   retentionQueue: Queue;
   /** The queue of the connection sweeps (attempts, health). */
   connectionSweepQueue: Queue;
+  /** The mail-ingest queue, with its 10-minute sweep. */
+  mailIngestQueue: Queue;
   /** Waits for running jobs, then closes workers and queues. */
   close: () => Promise<void>;
 }
@@ -138,6 +148,47 @@ export function startWorkers({
       await purgeQueue.add('purge', job, { jobId: purgeConnectionJobId(job.connectionId) });
     },
   };
+  const mailIngestQueue = new Queue(queueNames.mailIngest, {
+    connection,
+    defaultJobOptions,
+    ...prefixOption,
+  });
+  const enqueueIngest = async (jobs: MailIngestJob[]) => {
+    await mailIngestQueue.addBulk(
+      jobs.map((job) => ({
+        name: mailIngestJobNames.connection,
+        data: job,
+        opts: { deduplication: { id: mailIngestDeduplicationId(job) } },
+      })),
+    );
+  };
+  const mailIngest = new Worker(
+    queueNames.mailIngest,
+    (job) => {
+      const info = { jobId: jobIdOf(job) };
+      switch (job.name) {
+        case mailIngestJobNames.sweep:
+          return processMailIngestSweep(job.data, {
+            db,
+            enqueueTenants: async (tenantIds) => {
+              // One per tenant per sweep run; the run's own id keeps them apart.
+              await mailIngestQueue.addBulk(
+                tenantIds.map((tenantId) => ({
+                  name: mailIngestJobNames.tenant,
+                  data: { tenantId },
+                  opts: { jobId: `mail-ingest-tenant-${tenantId}-${info.jobId}` },
+                })),
+              );
+            },
+          });
+        case mailIngestJobNames.tenant:
+          return processMailIngestTenant(job.data, { db, enqueueIngest });
+        default:
+          return processMailIngestJob(job.data, info, { db, nango, log });
+      }
+    },
+    options,
+  );
   const nangoWebhook = new Worker(
     queueNames.nangoWebhook,
     (job) =>
@@ -159,6 +210,26 @@ export function startWorkers({
                     commit,
                   })
                 : Promise.resolve(),
+            // A sync webhook is only a signal (§4.1): the ingest reads the
+            // records. Enqueued before the commit; a failed commit retries
+            // and the ingest is idempotent.
+            sync: async ({ tenantId, delivery, payload, commit }) => {
+              if (
+                payload.type === 'sync' &&
+                payload.success &&
+                payload.model === 'InboxMessage' &&
+                delivery.connectionId
+              ) {
+                await enqueueIngest([{ tenantId, connectionId: delivery.connectionId }]);
+              } else if (payload.type === 'sync' && !payload.success) {
+                // No status change: an auth problem comes through auth/refresh (§4.1).
+                log.warn(
+                  { tenantId, deliveryId: delivery.id, errorType: payload.error?.type },
+                  'nango sync failed',
+                );
+              }
+              await commit(async () => {});
+            },
           },
         },
       ),
@@ -211,6 +282,7 @@ export function startWorkers({
     nangoWebhook,
     connectAttempt,
     connectionSweep,
+    mailIngest,
   ];
   if (testErrors) {
     workers.push(
@@ -243,10 +315,16 @@ export function startWorkers({
     workers,
     retentionQueue,
     connectionSweepQueue,
+    mailIngestQueue,
     close: async () => {
       // close() waits for running jobs to finish.
       await Promise.all(workers.map((worker) => worker.close()));
-      await Promise.all([retentionQueue.close(), purgeQueue.close(), connectionSweepQueue.close()]);
+      await Promise.all([
+        retentionQueue.close(),
+        purgeQueue.close(),
+        connectionSweepQueue.close(),
+        mailIngestQueue.close(),
+      ]);
     },
   };
 }

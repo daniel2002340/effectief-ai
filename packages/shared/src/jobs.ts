@@ -14,6 +14,7 @@ export const queueNames = {
   nangoWebhook: 'nango-webhook',
   connectAttempt: 'connect-attempt',
   connectionSweep: 'connection-sweep',
+  mailIngest: 'mail-ingest',
   /** Only outside production: a job that fails on purpose (decision #069). */
   monitoringTest: 'monitoring-test',
 } as const;
@@ -114,6 +115,33 @@ export const connectionSweepJobNames = {
 } as const;
 export const connectionSweepJobSchema = z.strictObject({});
 export const connectionSweepTenantJobSchema = tenantJobSchema;
+
+/**
+ * Mail ingest (docs/integrations.md §4.2–§4.3, #076): `connection` reads a
+ * mail connection's Nango records from its cursor; the sync webhook and the
+ * sweep enqueue it. `sweep` (every 10 minutes, without a tenant like
+ * retention) lists tenant ids; `tenant` enqueues one `connection` job per
+ * active mail connection of that tenant.
+ */
+export const mailIngestJobNames = {
+  sweep: 'sweep',
+  tenant: 'tenant',
+  connection: 'connection',
+} as const;
+export const mailIngestSweepJobSchema = z.strictObject({});
+export const mailIngestTenantJobSchema = tenantJobSchema;
+export const mailIngestJobSchema = tenantJobSchema.extend({
+  connectionId: z.uuid(),
+});
+export type MailIngestJob = z.infer<typeof mailIngestJobSchema>;
+
+/**
+ * At most one waiting or running ingest per connection: the webhook and the
+ * sweep do not read the same records twice. While one runs, a new one is
+ * dropped; the next webhook or sweep picks up what came in after.
+ */
+export const mailIngestDeduplicationId = ({ tenantId, connectionId }: MailIngestJob) =>
+  `mail-ingest-${tenantId}-${connectionId}`;
 
 /** Nothing but the tenant: the job fails on purpose and needs no data. */
 export const monitoringTestJobSchema = tenantJobSchema.strict();

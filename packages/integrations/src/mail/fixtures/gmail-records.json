@@ -1,0 +1,118 @@
+[
+  {
+    "id": "1a1113792a2c4de0",
+    "threadId": "1a1113792a2c4de0",
+    "internetMessageId": "<bericht-1@voorbeeld.example>",
+    "receivedAt": "2026-10-06T12:36:56.000Z",
+    "from": {
+      "address": "persoon1@voorbeeld.example",
+      "name": "Persoon 1"
+    },
+    "to": ["info@bedrijf.example"],
+    "cc": [],
+    "subject": "Onderwerp 1",
+    "bodyText": "lorem ipsum dolor\n\nsit\n\n<!--[amet !tekst]><!-->\n\n<!--[voorbeeld regel]><!-->\n\nlorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst\nvoorbeeld regel\n\n<lorem://ipsum/dolor>sit\n\namet tekst voorbeeld regel lorem:ipsum .\n\ndolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld\nregel lorem ipsum dolor sit amet\n\n<!--[tekst !voorbeeld]><!-->\n\n<!--[regel lorem]><!-->\n\n<!--[ipsum dolor]><!-->\n\nsit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem\nipsum dolor\n\n<sit://amet/tekst>voorbeeld\n\nregel lorem ipsum dolor sit:amet .\n\ntekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum\ndolor sit amet tekst voorbeeld regel\n\n<!--[lorem ipsum]><!-->\n\ndolor sit amet tekst voorbeeld\n\nregel lorem\n\nipsum dolor sit\n\namet\n\ntekst\n\nvoorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel\n\nlorem ipsum dolor sit:amet\n\ntekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel\n\nlorem , ipsum dolor sit amet tekst\n\n<!--[voorbeeld !regel]><!-->\n\n<!--[lorem ipsum]><!-->\n\n<!--[dolor sit]><!-->\n\namet tekst voorbeeld regel lorem\n\n<!--[ipsum dolor]><!-->\n\n<!--[sit amet]><!-->\n\n<!--[tekst voorbeeld]><!-->\n\nregel lorem\n\nipsum dolor sit\n\n<!--[amet tekst]><!-->\n\n<!--[voorbeeld regel]><!-->\n\n<!--[lorem ipsum]><!-->\n\ndolor\n\nsit\n\n<!--[amet tekst]><!-->\n\n<!--[voorbeeld regel]><!-->\n\n<!--[lorem ipsum]><!-->\n\n<!--[dolor sit]><!-->\n\n<!--[amet tekst]><!-->\n\n<!--[voorbeeld regel]><!-->\n\n<!--[lorem ipsum]><!-->\n\ndolor sit amet tekst voorbeeld regel lorem ipsum dolor sit\n\namet tekst voorbeeld regel:lorem\n\n<!--[ipsum dolor]><!-->\n\nsit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst\n\nvoorbeeld , regel lorem ipsum dolor sit\n\n<!--[amet tekst]><!-->\n\n<!--[voorbeeld regel]>\n<lorem:ipsum dolor:sit=\"amet:tekst:voorbeeld\"\nregel:lorem=\"ipsum:dolor:sit:amet\"\ntekst=\"voorbeeld://regel/lorem?ipsum=dolor&sit=amet%tekst%voorbeeld%regel%lorem%ipsum%dolor%sit%amet%tekst%voorbeeld\"\nregel=\"lorem:ipsum;dolor:sit;amet:tekst;\" voorbeeld=\"regel%\"\nlorem=\"ipsum\" dolor=\"#sit\">\n<amet:tekst/>\n<voorbeeld:regel lorem=\"ipsum,dolor,sit,amet\">\n\n<![tekst]-->\n<voorbeeld://regel/lorem>\nipsum\ndolor sit\n\namet tekst\n\n<voorbeeld://regel/lorem>ipsum\n\ndolor sit\n\n<amet://tekst/voorbeeld>regel\n\nlorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit\namet\n\ntekst voorbeeld regel lorem ipsum dolor sit amet tekst\n\nvoorbeeld regel lorem,\n\nipsum dolor sit\n\namet .\n\ntekst voorbeeld regel\n\nlorem ipsum dolor sit amet tekst voorbeeld regel\n\n<!--[lorem !ipsum]><!-->\n\n<!--[dolor sit]><!-->\n\namet tekst voorbeeld\n\nregel lorem ipsum dolor sit amet tekst voorbeeld\n\nregel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor\nsit amet tekst voorbeeld -regel\n\nlorem ipsum dolor sit amet tekst voorbeeld regel, lorem ipsum dolor\n<sit://amet/tekst/voorbeeld/regel/lorem?ipsum=dolor&sit=amet&tekst=voorbeeld>regel .\n\nlorem ipsum dolor sit amet tekst voorbeeld regel, lorem ipsum dolor\nsit\n\n© amet tekst voorbeeld regel, lorem ipsum, dolor sit, amet tekst, voorbeeld",
+    "labels": ["IMPORTANT", "CATEGORY_UPDATES", "INBOX"],
+    "attachments": [],
+    "backfill": true
+  },
+  {
+    "id": "1a110b5f99ca8a90",
+    "threadId": "1a110b5f99ca8a90",
+    "internetMessageId": "<bericht-2@voorbeeld.example>",
+    "receivedAt": "2026-10-06T10:15:23.000Z",
+    "from": {
+      "address": "persoon2@voorbeeld.example",
+      "name": "Persoon 2"
+    },
+    "to": ["info@bedrijf.example"],
+    "cc": [],
+    "subject": "Onderwerp 2",
+    "bodyText": "lorem ipsum dolor sit |\n\n&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;&amet;&tekst;&voorbeeld;&regel;&lorem;&ipsum;&dolor;&sit;\nlorem ipsum lorem\n\n&lorem;\n\nlorem ipsum dolor sit amet tekst\n\n&lorem;\n\nlorem ipsum dolor,\n\n&lorem;\n\nlorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst? voorbeeld regel lorem ipsum dolor sit, amet tekst voorbeeld, regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor\n\n&lorem;\n\nlorem ipsum dolor\n\nlorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor, sit amet tekst voorbeeld regel lorem ipsum dolor sit amet?\n\n&lorem;\n\nlorem &#ipsum;dolor sit amet tekst\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\nlorem ipsum dolor\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\n&lorem;\n\nlorem ipsum dolor sit amet tekst voorbeeld\n\n&lorem;\n\nlorem ipsum dolor\n\nlorem ipsum dolor sit\n\nlorem ipsum\n\nlorem\n\n&lorem;\n\nlorem ipsum dolor, sit amet tekst voorbeeld, regel lorem ipsum\n\n&lorem;",
+    "labels": ["IMPORTANT", "CATEGORY_UPDATES", "INBOX"],
+    "attachments": [],
+    "backfill": true
+  },
+  {
+    "id": "1a110a2fa6066457",
+    "threadId": "1a110a2fa6066457",
+    "internetMessageId": "<bericht-3@voorbeeld.example>",
+    "receivedAt": "2026-10-06T09:54:37.000Z",
+    "from": {
+      "address": "persoon4@voorbeeld.example",
+      "name": "Persoon 4"
+    },
+    "to": ["persoon3@voorbeeld.example"],
+    "cc": [],
+    "subject": "Onderwerp 3",
+    "bodyText": "** lorem ipsum dolor **\n\nsit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld, regel lorem ipsum dolor sit amet\n\ntekst voorbeeld regel: lorem://ipsum/dolor/?sit=amet\n\ntekst voorbeeld regel:\n\nlorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum, dolor sit amet://tekst/voorbeeld/?regel=lorem",
+    "labels": ["IMPORTANT", "CATEGORY_UPDATES", "INBOX"],
+    "attachments": [
+      {
+        "name": "bestand-1.png",
+        "mimeType": "image/png",
+        "size": 1450,
+        "attachmentId": "0.1"
+      }
+    ],
+    "backfill": true
+  },
+  {
+    "id": "1a11003f38e19aa1",
+    "threadId": "1a11003f38e19aa1",
+    "internetMessageId": "<bericht-4@voorbeeld.example>",
+    "receivedAt": "2026-10-06T07:00:47.000Z",
+    "from": {
+      "address": "persoon5@voorbeeld.example",
+      "name": "Persoon 5"
+    },
+    "to": ["persoon3@voorbeeld.example"],
+    "cc": [],
+    "subject": "Onderwerp 4",
+    "bodyText": "lorem, ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit\n\namet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst, voorbeeld regel lorem ipsum dolor sit, amet tekst voorbeeld regel lorem ipsum dolor sit amet\n\ntekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum, dolor sit amet tekst voorbeeld\n\nregel lorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld?\n\nregel lorem ipsum dolor sit amet tekst, voorbeeld regel lorem ipsum dolor sit amet tekst, voorbeeld regel lorem ipsum\n\ndolor,\nsit amet\ntekst",
+    "labels": ["IMPORTANT", "CATEGORY_PERSONAL", "INBOX"],
+    "attachments": [],
+    "backfill": true
+  },
+  {
+    "id": "1a10b5df49420bf7",
+    "threadId": "1a10b5df49420bf7",
+    "internetMessageId": "<bericht-5@voorbeeld.example>",
+    "receivedAt": "2026-10-05T09:21:08.000Z",
+    "from": {
+      "address": "persoon6@voorbeeld.example",
+      "name": "Persoon 7"
+    },
+    "to": ["info@bedrijf.example"],
+    "cc": [],
+    "subject": "Onderwerp 5",
+    "bodyText": "lorem ipsum dolor,\n\nsit amet tekst voorbeeld regel lorem ipsum\n\ndolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld regel lorem\nipsum dolor sit amet tekst voorbeeld regel\n\nlorem ipsum dolor sit amet tekst voorbeeld regel lorem ipsum\ndolor sit amet tekst voorbeeld regel lorem ipsum dolor sit amet\n[tekst].\n\nvoorbeeld regel lorem,\n\nipsum\n\ndolor:\n------\n[sit] amet://tekst/voorbeeld/regel/lorem/",
+    "labels": ["IMPORTANT", "CATEGORY_PERSONAL", "INBOX"],
+    "attachments": [
+      {
+        "name": "bestand-2.pdf",
+        "mimeType": "application/pdf",
+        "size": 22105,
+        "attachmentId": "1"
+      }
+    ],
+    "backfill": true
+  },
+  {
+    "id": "1a10a685edc56675",
+    "threadId": "1a10a685edc56675",
+    "internetMessageId": "<bericht-6@voorbeeld.example>",
+    "receivedAt": "2026-10-05T04:52:54.000Z",
+    "from": {
+      "address": "persoon7@voorbeeld.example",
+      "name": "Persoon 8"
+    },
+    "to": ["info@bedrijf.example"],
+    "cc": [],
+    "subject": "Onderwerp 6",
+    "bodyText": "lorem ipsum!\ndolor sit amet tekst\n\n<voorbeeld://regel/>\n\nlorem ipsum dolor sit - amet% tekst!\n<voorbeeld://regel/lorem/ipsum/dolor/>\n\nsit amet tekst (voorbeeld) regel lorem ipsum - dolor% sit!\n<amet://tekst/voorbeeld/regel/lorem/>\n\nipsum dolor sit amet tekst - voorbeeld% regel!\n<lorem://ipsum/dolor/sit/amet/>\n\ntekst - voorbeeld% regel!\n<lorem://ipsum/dolor/sit/amet/>\n\ntekst voorbeeld regel lorem ipsum: dolor sit - amet% tekst!\n<voorbeeld://regel/lorem/ipsum/dolor/>\n\nsit amet tekst voorbeeld regel lorem ipsum dolor sit amet tekst<voorbeeld://regel/lorem>\nipsum dolor sit amet tekst voorbeeld regel lorem ipsum dolor, sit amet\ntekst voorbeeld regel lorem ipsum dolor sit amet tekst voorbeeld: regel://lorem/ipsum/dolor?sit=amet\n\n© tekst voorbeeldlorem ipsum dolor sit, amet tekst, voorbeeld\nregel lorem ipsum dolor sit amet tekst voorbeeld regel lorem\nipsum dolor sit amet tekst voorbeeld regel lorem",
+    "labels": ["IMPORTANT", "CATEGORY_UPDATES", "INBOX"],
+    "attachments": [],
+    "backfill": true
+  }
+]

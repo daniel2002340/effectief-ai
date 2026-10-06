@@ -274,6 +274,7 @@ Alle tabellen van fase 1, 2 en 3 staan er (open vraag 1, #049); de logica volgt 
 | `list_tenant_ids()` | gebouwd | 0014 |
 | `webhook_deliveries`, `resolve_connection()`, retentiestap `webhook_deliveries`, auditobjecttype `webhook_deliveries` | gebouwd | 0016, 0017 |
 | `connect_attempts`, `resolve_connect_attempt()`, `webhook_deliveries.connect_attempt_id`, statusredenen `auth_recovered` en `account_mismatch`, auditacties `connection.reauthorized` en `connect_attempt.rejected`, retentiestap `connect_attempts` | gebouwd | 0018, 0019 |
+| `sync_cursors`, `event_contents.from_name` en `cc_addresses`, auditacties `mail.ingested` en `mail.content_removed` | gebouwd | 0020, 0021 |
 
 Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/`, en de datalevenscyclus in `packages/db/src/lifecycle/` (retentie, forgetEntity, ontkoppelen en purgen; #052). API-procedures: `tenant.*`, `cards.list`, `cards.get`, `actions.approve`, `actions.reject`, `entities.get`, `connections.*` (`list`, `startConnect`, `complete`, `reconnect`, `disconnect`). Nog geen extractie, leren of RAG.
 
@@ -419,6 +420,23 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - **Verwijderen/retentie:** hard, 30 dagen na `created_at` (retentiestap `connect_attempts`).
 - **Fase:** 1.
 
+#### `sync_cursors`
+
+**Doel:** tot waar de app de records van een connectie bij Nango heeft gelezen, per recordmodel (docs/integrations.md §4.2, #076). Nango eist een cursor per connectie en model; elke database (lokaal, staging) houdt zijn eigen cursors bij.
+
+| Kolom | Type | Betekenis | PG |
+|---|---|---|---|
+| `connection_id` | uuid not null | FK `(tenant_id, connection_id)` → `connections`, cascade | — |
+| `model` | text, check | `InboxMessage` (lijst `syncModels`) | — |
+| `cursor` | text null | `_nango_metadata.cursor` van het laatst opgenomen record; `null` = vanaf het begin | — |
+| `created_at`, `updated_at` | timestamptz | | — |
+
+- **Sleutel:** PK `(tenant_id, connection_id, model)`. Met `tenant_id` in de sleutel botst een poging van een andere tenant op de foreign key, niet stil op een rij die hij niet ziet.
+- **Eén ingest tegelijk:** `applyMailPage()` vergrendelt de rij (`FOR UPDATE`) en neemt een pagina alleen op als de cursor nog gelijk is aan die waarvandaan de pagina gelezen werd; anders stopt de job (een andere ingest was eerst). Tijdens de Nango-call staat geen transactie open.
+- **Rechten:** S, I, U(`cursor`, `updated_at`); verdwijnt met de connectie (cascade).
+- **Persoonsgegevens:** geen; de cursor is een ondoorzichtige positie bij Nango.
+- **Fase:** 1.
+
 #### `events`
 
 **Doel:** de episodische tijdlijn. Eén rij per gebeurtenis in de wereld van de klant: een mail ontvangen of verstuurd, een betaling ontvangen, een offerte geaccepteerd, een actie uitgevoerd, een notitie van de gebruiker. Append-only.
@@ -439,7 +457,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - **Constraints:** `unique (tenant_id, source, external_id)` (CLAUDE.md).
 - **Indexen:** `(tenant_id, occurred_at desc)`; `(tenant_id, thread_key)`; `(tenant_id, type, occurred_at desc)`.
 - **Append-only:** geen UPDATE behalve `summary` en `summarized_at` (kolomrecht), want samenvatten gebeurt in een latere job. De trigger `events_summary_once` staat dat alleen toe zolang `summary is null`; daarna geeft hij `integrity_constraint_violation`. `setEventSummary()` werkt met `where summary is null` en geeft `false` terug als er al een samenvatting was.
-- **Payload per type** (`packages/shared/src/domain/event.ts`): mail `{ attachmentCount? }`; offerte en factuur `{ providerObjectId, documentNumber?, totalExclVatCents, vatRateBps }`; betaling `{ providerPaymentId, amountCents, currency: 'EUR', failureCode? }`; `action.executed` `{ providerObjectId }`; `note.added` `{}` (de tekst van een notitie hoort in `event_contents`).
+- **Payload per type** (`packages/shared/src/domain/event.ts`): mail `{ attachmentCount?, labels?, backfill? }` (`labels`: systeemlabels uit een vaste lijst, nooit eigen labelnamen; `backfill`: uit de eerste sync van 14 dagen); offerte en factuur `{ providerObjectId, documentNumber?, totalExclVatCents, vatRateBps }`; betaling `{ providerPaymentId, amountCents, currency: 'EUR', failureCode? }`; `action.executed` `{ providerObjectId }`; `note.added` `{}` (de tekst van een notitie hoort in `event_contents`).
 - **Idempotent opnemen:** `recordEvent()` doet `on conflict (tenant_id, source, external_id) do nothing` en geeft dan het bestaande event terug (`created: false`), zonder de inhoud aan te raken.
 - **Persoonsgegevens:** `summary` (I). `payload` mag volgens het Zod-schema geen vrije tekst bevatten; momentopnames zijn ID's, nummers en bedragen.
 - **Verwijderen:** hard, alleen door forgetEntity en het ontkoppelen van een connectie. Cascade naar `event_contents`, `event_entities`, `card_events`, `playbook_examples`; `set null` op bronverwijzingen.
@@ -454,11 +472,13 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 |---|---|---|---|
 | `event_id` | uuid PK | FK `(tenant_id, event_id)` → `events`, cascade | — |
 | `tenant_id` | uuid | | — |
-| `from_address` | text null | | P |
-| `to_addresses` | text[] null | | P |
+| `from_address` | text null | Kleine letters | P |
+| `from_name` | text null | Weergavenaam van de afzender, voor het aanmaken van een contact (sessie 5) | P |
+| `to_addresses` | text[] null | Kleine letters, alleen adressen | P |
+| `cc_addresses` | text[] null | Kleine letters, alleen adressen; voor "antwoord aan allen" | P |
 | `subject` | text null | | I |
-| `body_text` | text null | Platte tekst, na verwijderen van quotes en handtekeningen waar mogelijk. Geen HTML | I |
-| `attachments` | jsonb null | `[{ name, mimeType, size, providerAttachmentId }]`; bestanden zelf blijven bij de provider | I |
+| `body_text` | text null | Platte tekst (HTML in de Nango-function omgezet, resterende tags en base64-blokken eruit), max. 32.000 tekens. Quotes en handtekeningen staan er nog in (docs/todo.md) | I |
+| `attachments` | jsonb null | `[{ name, mimeType, size, providerAttachmentId }]`; bestanden zelf blijven bij de provider. Gmail: `providerAttachmentId` is het `partId` (Gmail's attachment-ID verandert per ophaalactie) | I |
 | `retain_until` | timestamptz not null | `occurred_at` + bewaartermijn van de tenant | — |
 | `created_at` | timestamptz | | — |
 
@@ -480,6 +500,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 Per stap (en batch) met resultaat één audit-regel `retention.purged` met `{ step, count }`. Mislukt een batch, dan retryt de job (standaard BullMQ-opties); de selectie is idempotent.
 
 - **Bewaartermijn:** `tenant_settings.content_retention_days` (default 90, check 30–365). `retain_until` = `occurred_at` + die termijn, berekend bij het opnemen. Zie open vraag 3.
+- **Verwijderd bij de bron:** een mail die bij de provider naar de prullenbak of spam gaat of definitief verwijderd wordt, verliest zijn rij hier meteen (de ingest, audit `mail.content_removed` met het aantal); het event blijft (docs/integrations.md §4.5).
 - **Indexen:** `(tenant_id, retain_until)`.
 - **Fase:** 1.
 
@@ -574,7 +595,7 @@ Per stap (en batch) met resultaat één audit-regel `retention.purged` met `{ st
 | `occurred_at` | timestamptz | | — |
 | `actor_type` | text, check | `user` · `agent` · `system` | — |
 | `actor_user_id` | uuid null | **Geen FK**: moet blijven bestaan als de gebruiker weg is | — |
-| `action` | text, check | `action.proposed` · `action.approved` · `action.started` · `action.executed` · `fact.confirmed` · `entity.forgotten` · `connection.revoked` · `retention.purged` · … | — |
+| `action` | text, check | `action.proposed` · `action.approved` · `action.started` · `action.executed` · `fact.confirmed` · `entity.forgotten` · `connection.revoked` · `retention.purged` · `mail.ingested` (per pagina: `{ provider, records, created, removed, invalid }`) · `mail.content_removed` (`{ provider, count }`) · … | — |
 | `object_type` | text, check | Tabelnaam | — |
 | `object_id` | uuid null | **Geen FK** | — |
 | `from_status`, `to_status` | text null | | — |
@@ -826,6 +847,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `connections` | S, I, U(`status`, `status_reason`, `status_changed_at`, `last_synced_at`, `account_label`, `external_account_id`) | |
 | `connect_attempts` | S, I, U(`consumed_at`, `connection_id`, `nango_connection_id`, `failure_code`), D | uitkomst eenmalig (in code) |
 | `webhook_deliveries` | S, I, U(`status`, `attempts`, `last_error_code`, `processed_at`), D | |
+| `sync_cursors` | S, I, U(`cursor`) | verdwijnt met de connectie |
 | `events` | S, I, U(`summary`, `summarized_at`), D | append-only; `summary` eenmalig (trigger) |
 | `event_contents` | S, I, D | onveranderlijk |
 | `event_entities`, `card_events`, `card_entities`, `task_entities`, `document_entities` | S, I, D | |
@@ -869,9 +891,11 @@ sequenceDiagram
     A->>DB: resolve_connection() → tenant
     A->>DB: insert webhook_deliveries (on conflict do nothing)
     A-->>N: 200
-    A->>W: job ingest {tenantId, deliveryId}
-    W->>N: records ophalen
-    W->>DB: per mail in één tx: events + event_contents + event_entities (identifier-match)
+    A->>W: job nango-webhook {tenantId, deliveryId}
+    W->>W: job mail-ingest {tenantId, connectionId}
+    W->>N: records ophalen vanaf sync_cursors.cursor
+    W->>DB: per pagina in één tx: events + event_contents + event_entities (identifier-match) + cursor + audit
+    W->>N: prune tot de cursor
     W->>W: job classify {tenantId, eventId}
     W->>M: classificeren + samenvatten (mail = onvertrouwde input)
     M-->>W: Zod-geparste output
@@ -879,7 +903,7 @@ sequenceDiagram
 ```
 
 1. **Ontvangen** (api): handtekening op de ruwe body, `resolve_connection()`, rij in `webhook_deliveries`, 200, job. Onbekende connectie: loggen met ID en 200 (geen retries van Nango uitlokken).
-2. **Inlezen** (job `ingest`): records ophalen bij Nango. Per mail in één transactie: `events` (`on conflict (tenant_id, source, external_id) do nothing`), `event_contents` met `retain_until`, en `event_entities` voor afzenders en ontvangers die al een `entity_identifier` hebben (`linked_by = 'rule'`). Geen nieuwe entiteiten hier: nieuwsbrieven en spam horen geen contact te worden. Delivery → `processed`.
+2. **Inlezen** (job `mail-ingest` per connectie, gezet door de webhook-job en elke 10 minuten door een sweep; docs/integrations.md §4.2): records ophalen bij Nango vanaf de eigen cursor in `sync_cursors`. Per pagina in één transactie: `events` (`on conflict (tenant_id, source, external_id) do nothing`), `event_contents` met `retain_until`, `event_entities` voor afzenders en ontvangers die al een `email`-identifier hebben (`linked_by = 'rule'`), bij verwijderde mail de `event_contents` weg, de nieuwe cursor, `connections.last_synced_at` en audit `mail.ingested`. Geen nieuwe entiteiten hier: nieuwsbrieven en spam horen geen contact te worden. Daarna Nango's kopie prunen tot de cursor. De delivery is al `processed` zodra de ingest-job gezet is.
 3. **Classificeren** (job `classify`, per event): het model krijgt de mail als gemarkeerde, onvertrouwde data, plus `company_profile`. Output (Zod): relevant ja/nee, soort, samenvatting, voorgestelde entiteiten, voorgestelde feiten. **Geen databasetransactie open tijdens de modelaanroep.**
 4. **Vastleggen** (één transactie): `events.summary`; bij relevant: entiteiten aanmaken of koppelen (contact + bedrijf, identifiers), kaart aanmaken of bijwerken (`dedupe_key = thread:<thread_key>`), `card_events`/`card_entities`, voorgestelde feiten als `proposed` (fase 2). Bij niet relevant: alleen de samenvatting; geen kaart, geen entiteit.
 5. **Actie voorstellen** (job `propose`): context = mail-inhoud + bevestigde feiten en relaties van de entiteiten + playbooks (embedding-zoektocht op `trigger_description`, filter op scope) + live providerdata (bijv. openstaande facturen uit Moneybird). Output → `actions` met `status = 'concept'`, `proposed_input` = `input`, `playbook_id`, deterministische `idempotency_key`. Handtekening en taal in code.

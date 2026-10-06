@@ -11,6 +11,8 @@ export {
   NangoApiError,
   type NangoClient,
   type NangoConnection,
+  type NangoRecord,
+  type NangoRecordsPage,
 } from './client.ts';
 export {
   NANGO_API_URL,

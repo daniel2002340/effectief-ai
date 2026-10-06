@@ -2,7 +2,7 @@
 
 Ontwerp voor sessie 4: Gmail en Outlook koppelen via Nango en nieuwe mail binnenhalen tot `events` + bron-inhoud. Geen AI en geen kaarten uit mail; dat is sessie 5.
 
-**Status:** stap 1 en 2 van §10 gebouwd (Nango-basis, koppelen van Gmail en Outlook, met de levenscyclus uit §5 behalve `pre-connection-deletion`); inlezen (stap 3) is ontwerp. Staging gebruikt voorlopig Nango's testapps (#082). Afwijkingen in de bouw: #084. Beslissingen: #074–#084; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
+**Status:** stap 1 en 2 van §10 gebouwd (Nango-basis, koppelen van Gmail en Outlook, met de levenscyclus uit §5 behalve `pre-connection-deletion`); stap 3 (inlezen) gebouwd voor Gmail, end-to-end op staging volgt na de merge. Staging gebruikt voorlopig Nango's testapps (#082). Afwijkingen in de bouw: #084, #085. Beslissingen: #074–#084; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
 
 Inhoud:
 
@@ -236,7 +236,7 @@ Eén record per mail, model `InboxMessage`, zo klein mogelijk:
 | `subject` | header `Subject` | `subject` | |
 | `bodyText` | `text/plain`-deel; zonder dat het HTML-deel omgezet naar tekst; max. 32.000 tekens | body met `Prefer: outlook.body-content-type="text"` (Graph levert dan tekst); max. 32.000 tekens | Inhoud voor de AI (sessie 5) |
 | `labels` | systeemlabels uit een vaste lijst: `INBOX`, `UNREAD`, `IMPORTANT`, `STARRED`, `CATEGORY_PERSONAL`, `CATEGORY_UPDATES`, `CATEGORY_FORUMS` | `inbox`, plus `isRead` als `UNREAD` | "label/map"; geen namen van eigen labels |
-| `attachments` | per deel met `filename`: naam, `mimeType`, `body.size`, `attachmentId` | `GET /messages/{id}/attachments?$select=id,name,contentType,size` (alleen als `hasAttachments`) | Alleen metadata |
+| `attachments` | per deel met `filename`: naam, `mimeType`, `body.size`, en het `partId` als `attachmentId` (Gmail's eigen attachment-ID verandert per ophaalactie, #085) | `GET /messages/{id}/attachments?$select=id,name,contentType,size` (alleen als `hasAttachments`) | Alleen metadata |
 | `backfill` | `true` tijdens de eerste sync | idem | Sessie 5 kan oude mail anders behandelen |
 
 Niet ophalen of opslaan, nergens (ook niet in Nango):
@@ -601,8 +601,8 @@ Beantwoord door Daniël op 2026-10-05 (#080).
 | `delivery_id` | "uniek ID van de bron, of sha256 van de body" | sha256 van de body; voor auth-webhooks plus het uur van ontvangst (§4.4) | Nango heeft geen delivery-ID, en dezelfde refresh-fout kan later opnieuw komen |
 | Nieuwe tabel `connect_attempts` | – | tenant-tabel: `nonce` (uniek), `provider`, `nango_integration_id`, `created_by_user_id`, `expires_at`, `consumed_at`, `connection_id`, `failure_code`; RLS, grants, isolatietest | Tenant-toewijzing zonder de frontend (§2.2, §2.5) |
 | Nieuwe functie `resolve_connect_attempt(nonce)` | alleen `resolve_connection()` (#038) | tweede smalle `SECURITY DEFINER`-functie, alleen ID's terug | Zelfde reden als #038 |
-| Nieuwe tabel `sync_cursors` | – | `(tenant_id, connection_id, model)`, `cursor`, `updated_at`; PK `(connection_id, model)`, cascade met de connectie | Nango eist een cursor per connectie en model |
-| `event_contents` | `from_address`, `to_addresses` | plus `from_name` en `cc_addresses` (beide P) | §3.4 |
+| Nieuwe tabel `sync_cursors` | – | `(tenant_id, connection_id, model)`, `cursor`, `updated_at`; PK `(tenant_id, connection_id, model)` (#085), cascade met de connectie | Nango eist een cursor per connectie en model |
+| `event_contents` | `from_address`, `to_addresses` | plus `from_name` en `cc_addresses` (beide P) | §3.4 (gebouwd, 0020) |
 | `events.payload` voor mail | `{ attachmentCount? }` | plus `labels` (vaste lijst) en `backfill` | §3.4 |
 | `connectionStatusReasons` | 5 codes | plus `auth_recovered` en `account_mismatch` | Herstel na een tijdelijke refresh-fout (§5.1); ander account na opnieuw koppelen (§2.4) |
 | `audit_log.action` | – | `connection_attempt.rejected`, `mail.content_removed`, `mail.ingested` (aantallen) | Alleen codes en aantallen (#040) |

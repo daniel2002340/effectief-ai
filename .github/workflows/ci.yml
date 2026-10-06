@@ -86,6 +86,11 @@ jobs:
       - name: Nango functions compile
         run: pnpm --filter @effectief/nango-integrations compile
 
+      # The record models' JSON schema in .nango/nango.json is what the app's
+      # schemas are tested against (docs/integrations.md §7.5): it must be current.
+      - name: Nango compile output is committed
+        run: git diff --exit-code -- packages/integrations/nango-integrations/.nango
+
       # The same migration step as a deploy (#058, #059): migrations as owner, then the
       # login roles for the app and Better Auth. Tests run as these, never as the owner.
       - name: Migrations and login roles

@@ -181,8 +181,16 @@ export const auditActions = [
   'playbook.retired',
   'entity.forgotten',
   'retention.purged',
+  /** One page of mail records taken in from Nango: counts only. */
+  'mail.ingested',
+  /** Source content removed because the mail was deleted or marked spam at the source. */
+  'mail.content_removed',
 ] as const;
 export type AuditAction = (typeof auditActions)[number];
+
+/** Nango record models we read with a cursor (sync_cursors.model). */
+export const syncModels = ['InboxMessage'] as const;
+export type SyncModel = (typeof syncModels)[number];
 
 /**
  * What the retention job removes (docs/data-model.md, event_contents):

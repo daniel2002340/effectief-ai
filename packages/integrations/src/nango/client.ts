@@ -76,6 +76,33 @@ export interface NangoConnectionHealth extends NangoConnection {
 
 const errorBodySchema = z.object({ error: z.object({ code: z.string() }) });
 
+const recordMetadataSchema = z.object({
+  cursor: z.string().min(1),
+  deleted_at: z.string().nullish(),
+  pruned_at: z.string().nullish(),
+});
+const recordsPageSchema = z.object({
+  records: z.array(z.looseObject({ _nango_metadata: recordMetadataSchema })),
+  next_cursor: z.string().nullish(),
+});
+
+/**
+ * A record as Nango returns it: the model's fields stay unparsed (`fields`),
+ * the caller parses them with the model's own schema.
+ */
+export interface NangoRecord {
+  fields: Record<string, unknown>;
+  cursor: string;
+  deleted: boolean;
+  pruned: boolean;
+}
+export interface NangoRecordsPage {
+  records: NangoRecord[];
+  nextCursor: string | undefined;
+}
+
+const pruneSchema = z.object({ count: z.int().min(0), has_more: z.boolean() });
+
 export interface NangoClientOptions {
   secretKey: string;
   /** Tests pass a fake; defaults to the global fetch. */
@@ -222,6 +249,44 @@ export function createNangoClient({
       }
     },
 
+    /** One page of a connection's records after `cursor`, oldest change first (§4.2). */
+    async listRecords(
+      ref: ConnectionRef,
+      input: { model: string; cursor: string | null; limit?: number },
+    ): Promise<NangoRecordsPage> {
+      const query = new URLSearchParams({ model: input.model, limit: String(input.limit ?? 100) });
+      if (input.cursor) query.set('cursor', input.cursor);
+      const page = await call('list records', `/records?${query}`, recordsPageSchema, {
+        headers: recordHeaders(ref),
+      });
+      return {
+        records: page.records.map(({ _nango_metadata: meta, ...fields }) => ({
+          fields,
+          cursor: meta.cursor,
+          deleted: Boolean(meta.deleted_at),
+          pruned: Boolean(meta.pruned_at),
+        })),
+        nextCursor: page.next_cursor ?? undefined,
+      };
+    },
+
+    /** Empties the payloads of the records up to and including `untilCursor` (§3.5). */
+    async pruneRecords(
+      ref: ConnectionRef,
+      input: { model: string; untilCursor: string },
+    ): Promise<{ count: number }> {
+      let count = 0;
+      for (;;) {
+        const result = await call('prune records', '/records/prune', pruneSchema, {
+          method: 'PATCH',
+          headers: recordHeaders(ref),
+          body: { model: input.model, until_cursor: input.untilCursor },
+        });
+        count += result.count;
+        if (!result.has_more) return { count };
+      }
+    },
+
     /** Runs one of our Nango actions and parses its output with the given schema. */
     async triggerAction<T>(
       ref: ConnectionRef,
@@ -239,6 +304,11 @@ export function createNangoClient({
 }
 
 export type NangoClient = ReturnType<typeof createNangoClient>;
+
+const recordHeaders = (ref: ConnectionRef) => ({
+  'connection-id': ref.connectionId,
+  'provider-config-key': ref.integrationId,
+});
 
 function kindOf(status: number): NangoErrorKind {
   if (status === 404) return 'not_found';

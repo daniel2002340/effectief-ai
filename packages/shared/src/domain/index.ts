@@ -7,6 +7,7 @@ export * from './document.ts';
 export * from './entity.ts';
 export * from './event.ts';
 export * from './fact.ts';
+export * from './inbox-message.ts';
 export * from './insight.ts';
 export * from './lifecycle.ts';
 export * from './money.ts';

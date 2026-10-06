@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { inboxMessageLabels } from './inbox-message.ts';
 import { centsSchema, vatRateBpsSchema } from './money.ts';
 import { type EventType, eventEntityRoles, eventSources, linkedByValues } from './status.ts';
 
@@ -11,6 +12,10 @@ const providerCode = z.string().regex(/^[\w.:/#-]{1,128}$/);
 
 const emailPayload = z.strictObject({
   attachmentCount: z.int().min(0).max(1000).optional(),
+  /** System labels from a fixed list; never names of the user's own labels. */
+  labels: z.array(z.enum(inboxMessageLabels)).max(inboxMessageLabels.length).optional(),
+  /** From the first sync of a mailbox (14 days back), not newly received. */
+  backfill: z.boolean().optional(),
 });
 
 /** Snapshot at the time of the event; the current state is fetched live. */
@@ -56,7 +61,9 @@ export type AttachmentMeta = z.infer<typeof attachmentMetaSchema>;
 /** event_contents: the source content, removed after the retention period. */
 export const eventContentInputSchema = z.strictObject({
   fromAddress: z.string().max(320).nullish(),
+  fromName: z.string().max(320).nullish(),
   toAddresses: z.array(z.string().max(320)).max(500).nullish(),
+  ccAddresses: z.array(z.string().max(320)).max(500).nullish(),
   subject: z.string().max(1000).nullish(),
   bodyText: z.string().max(1_000_000).nullish(),
   attachments: z.array(attachmentMetaSchema).max(100).nullish(),

@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./testing": "./src/testing/index.ts",
-    "./nango": "./src/nango/index.ts"
+    "./nango": "./src/nango/index.ts",
+    "./mail": "./src/mail/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
