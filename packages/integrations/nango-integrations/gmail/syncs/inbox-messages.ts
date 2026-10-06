@@ -8,6 +8,7 @@ import {
   isRemoved,
   toInboxMessage,
 } from '../helpers/message.js';
+import { patiently } from '../helpers/rate-limit.js';
 
 // New mail in the Gmail inbox (docs/integrations.md §3.1–§3.2, decision #074).
 //
@@ -24,8 +25,19 @@ import {
 
 const BACKFILL_QUERY = 'in:inbox newer_than:14d -category:promotions -category:social';
 const PAGE_SIZE = 100;
-/** Parallel messages.get calls; well under Gmail's per-user quota. */
+/** Parallel messages.get calls (5 quota units each). */
 const CONCURRENCY = 5;
+/**
+ * Each batch takes at least this long: 5 calls per 500 ms is at most 3,000
+ * units a minute. Nango's Google app allows 6,000 per user, yet dry runs on
+ * staging hit its limit after ~110 messages; a rate limit then waits (below).
+ */
+const BATCH_MIN_MS = 500;
+/** On a Gmail rate limit: wait a minute (the quota window), at most 4 tries in all. */
+const RATE_LIMIT_WAIT_MS = 60_000;
+const RATE_LIMIT_ATTEMPTS = 4;
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 // Nango allows only flat strings, numbers and booleans; '' means no page token.
 const Checkpoint = z.object({
@@ -60,13 +72,26 @@ const sync = createSync({
   scopes: ['https://www.googleapis.com/auth/gmail.readonly'],
 
   exec: async (nango) => {
+    /** nango.get, waiting out Gmail's per-minute quota instead of failing the run. */
+    const get = (config: Parameters<typeof nango.get>[0]) =>
+      patiently(async () => await nango.get(config), {
+        attempts: RATE_LIMIT_ATTEMPTS,
+        waitMs: RATE_LIMIT_WAIT_MS,
+        wait: pause,
+        onWait: async (attempt) => {
+          await nango.log(`Gmail rate limit; waiting a minute (attempt ${attempt})`, {
+            level: 'warn',
+          });
+        },
+      });
+
     /** One message as a record, or why not: gone (404) or no longer inbox mail. */
     async function fetchMessage(
       id: string,
       backfill: boolean,
     ): Promise<{ record: InboxMessage } | { removed: true } | { skipped: true }> {
       try {
-        const response = await nango.get({
+        const response = await get({
           // https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/get
           endpoint: `/gmail/v1/users/me/messages/${encodeURIComponent(id)}`,
           params: { format: 'full' },
@@ -87,6 +112,7 @@ const sync = createSync({
       const records: InboxMessage[] = [];
       const removed = [...removeIds];
       for (let i = 0; i < ids.length; i += CONCURRENCY) {
+        const started = Date.now();
         const results = await Promise.all(
           ids
             .slice(i, i + CONCURRENCY)
@@ -96,6 +122,9 @@ const sync = createSync({
           if ('record' in result) records.push(result.record);
           else if ('removed' in result) removed.push(id);
         }
+        const elapsed = Date.now() - started;
+        if (i + CONCURRENCY < ids.length && elapsed < BATCH_MIN_MS)
+          await pause(BATCH_MIN_MS - elapsed);
       }
       if (records.length > 0) await nango.batchSave(records, 'InboxMessage');
       if (removed.length > 0) {
@@ -109,7 +138,7 @@ const sync = createSync({
     async function backfill(start: Checkpoint) {
       let pageToken = start.pageToken;
       do {
-        const response = await nango.get({
+        const response = await get({
           // https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list
           endpoint: '/gmail/v1/users/me/messages',
           params: {
@@ -136,7 +165,7 @@ const sync = createSync({
 
     /** From the profile's current historyId: the start of a (new) backfill. */
     async function startBackfill() {
-      const response = await nango.get({
+      const response = await get({
         // https://developers.google.com/workspace/gmail/api/reference/rest/v1/users/getProfile
         endpoint: '/gmail/v1/users/me/profile',
         retries: 3,
@@ -163,7 +192,7 @@ const sync = createSync({
     do {
       let page: HistoryPage;
       try {
-        const response = await nango.get({
+        const response = await get({
           // https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list
           endpoint: '/gmail/v1/users/me/history',
           params: {

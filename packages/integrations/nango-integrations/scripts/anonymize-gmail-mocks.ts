@@ -94,15 +94,21 @@ function neutral(text: string): string {
 }
 
 function neutralHtml(html: string): string {
-  return html
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/(<(?:script|style)\b[^>]*>)[\s\S]*?(<\/(?:script|style)\s*>)/gi, '$1$2')
-    .replace(
-      /\s(href|src|alt|title)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
-      (_m, name: string, value: string) =>
-        ` ${name}="${/^["']?cid:/i.test(value) ? 'cid:afbeelding' : 'https://voorbeeld.example/'}"`,
-    )
-    .replace(/>([^<]+)</g, (_m, text: string) => `>${neutral(text)}<`);
+  return (
+    html
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/(<(?:script|style)\b[^>]*>)[\s\S]*?(<\/(?:script|style)\s*>)/gi, '$1$2')
+      .replace(
+        /\s(href|src|alt|title)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi,
+        (_m, name: string, value: string) =>
+          ` ${name}="${/^["']?cid:/i.test(value) ? 'cid:afbeelding' : 'https://voorbeeld.example/'}"`,
+      )
+      // Text between tags, and before the first and after the last tag.
+      .replace(
+        /(^|>)([^<]+)(?=<|$)/g,
+        (_m, open: string, text: string) => `${open}${neutral(text)}`,
+      )
+  );
 }
 
 const decode = (data: string) => Buffer.from(data, 'base64url').toString('utf8');

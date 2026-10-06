@@ -145,7 +145,7 @@ const isAttachment = (part: GmailPart) => Boolean(part.filename);
 function bodyTextOf(payload: GmailPart): string {
   const parts = walk(payload).filter((part) => !isAttachment(part) && part.body?.data);
   const plain = parts.find((part) => part.mimeType === 'text/plain');
-  if (plain?.body?.data) return normalizeWhitespace(decodeBase64Url(plain.body.data));
+  if (plain?.body?.data) return normalizeWhitespace(stripTags(decodeBase64Url(plain.body.data)));
   const html = parts.find((part) => part.mimeType === 'text/html');
   if (html?.body?.data) return htmlToText(decodeBase64Url(html.body.data));
   return '';
@@ -219,6 +219,15 @@ export function htmlToText(html: string): string {
     .replace(/<\/t[dh]\s*>/gi, ' ')
     .replace(/<[^>]*>/g, '');
   return normalizeWhitespace(decodeEntities(text));
+}
+
+/**
+ * Some senders put HTML in their text/plain part. Removes whole tags only:
+ * "<br>", "<a href=…>", "</a>"; "a < b" and "<https://…>" stay.
+ */
+const TAG = /<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/gi;
+function stripTags(text: string): string {
+  return text.replace(TAG, '');
 }
 
 function normalizeWhitespace(text: string): string {
