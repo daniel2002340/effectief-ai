@@ -1,0 +1,1 @@
+ALTER TABLE "events" ADD COLUMN "internet_message_id" text;

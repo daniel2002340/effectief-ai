@@ -144,6 +144,8 @@ export const connectionSummarySchema = z.object({
   statusReason: z.enum(connectionStatusReasons).nullable(),
   accountLabel: z.string().nullable(),
   lastSyncedAt: z.date().nullable(),
+  /** Mails taken in through this connection (events `email.received`). */
+  receivedMailCount: z.number().int().nonnegative(),
   connectedAt: z.date(),
   canManage: z.boolean(),
 });

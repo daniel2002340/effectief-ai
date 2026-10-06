@@ -47,6 +47,7 @@ describe('normalizeInboxMessage on recorded Gmail records', () => {
         source: 'gmail',
         externalId: message.id,
         threadKey: message.threadId,
+        internetMessageId: message.internetMessageId,
         payload: { attachmentCount: message.attachments.length, backfill: true },
       });
       for (const address of [content?.fromAddress, ...(content?.toAddresses ?? [])]) {
@@ -59,6 +60,26 @@ describe('normalizeInboxMessage on recorded Gmail records', () => {
     const [first] = records;
     expect(parseInboxRecord({ ...(first as object), html: '<p>x</p>' })).toBeUndefined();
     expect(inboxMessageSchema.safeParse(first).success).toBe(true);
+  });
+});
+
+describe('internetMessageId', () => {
+  const [first] = records;
+  const eventWith = (internetMessageId: string | undefined) => {
+    const message = parseInboxRecord({ ...(first as object), internetMessageId });
+    if (!message) throw new Error('fixture does not parse');
+    return normalizeInboxMessage(message, { source: 'gmail', connectionId })?.event.event;
+  };
+
+  it('keeps the Message-ID header on the event (#086)', () => {
+    expect(eventWith(' <abc.123@mail.example> ')?.internetMessageId).toBe('<abc.123@mail.example>');
+  });
+
+  it('is null when missing, empty, too long or not one printable token', () => {
+    expect(eventWith(undefined)?.internetMessageId).toBeNull();
+    expect(eventWith('  ')?.internetMessageId).toBeNull();
+    expect(eventWith(`<${'a'.repeat(998)}@x>`)?.internetMessageId).toBeNull();
+    expect(eventWith('<a b@x>')?.internetMessageId).toBeNull();
   });
 });
 

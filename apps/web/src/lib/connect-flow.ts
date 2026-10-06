@@ -105,6 +105,13 @@ export function lastSyncText(lastSyncedAt: Date | null): string {
   return lastSyncedAt ? dateTime.format(lastSyncedAt) : 'nog niet';
 }
 
+const count = new Intl.NumberFormat('nl-NL');
+
+export function receivedMailText(receivedMailCount: number): string {
+  if (receivedMailCount === 1) return '1 mail binnengekomen';
+  return `${count.format(receivedMailCount)} mails binnengekomen`;
+}
+
 /**
  * Shown before disconnecting. Microsoft has no way for an app to withdraw its
  * own consent for one user (§5.3); Google's we do not withdraw yet either.

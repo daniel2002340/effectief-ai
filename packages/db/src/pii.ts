@@ -81,6 +81,8 @@ export const piiRegister: Record<string, Record<string, PiiClass>> = {
     type: '-',
     occurred_at: '-',
     thread_key: '-',
+    // Some mailers put the sender's address or name in the Message-ID.
+    internet_message_id: 'P',
     summary: 'I',
     summarized_at: '-',
     payload: '-',

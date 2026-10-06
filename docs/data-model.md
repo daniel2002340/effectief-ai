@@ -275,6 +275,7 @@ Alle tabellen van fase 1, 2 en 3 staan er (open vraag 1, #049); de logica volgt 
 | `webhook_deliveries`, `resolve_connection()`, retentiestap `webhook_deliveries`, auditobjecttype `webhook_deliveries` | gebouwd | 0016, 0017 |
 | `connect_attempts`, `resolve_connect_attempt()`, `webhook_deliveries.connect_attempt_id`, statusredenen `auth_recovered` en `account_mismatch`, auditacties `connection.reauthorized` en `connect_attempt.rejected`, retentiestap `connect_attempts` | gebouwd | 0018, 0019 |
 | `sync_cursors`, `event_contents.from_name` en `cc_addresses`, auditacties `mail.ingested` en `mail.content_removed` | gebouwd | 0020, 0021 |
+| `events.internet_message_id` (#086) | gebouwd | 0022 |
 
 Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/`, en de datalevenscyclus in `packages/db/src/lifecycle/` (retentie, forgetEntity, ontkoppelen en purgen; #052). API-procedures: `tenant.*`, `cards.list`, `cards.get`, `actions.approve`, `actions.reject`, `entities.get`, `connections.*` (`list`, `startConnect`, `complete`, `reconnect`, `disconnect`). Nog geen extractie, leren of RAG.
 
@@ -449,6 +450,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 | `type` | text, check | `email.received` · `email.sent` · `quote.sent` · `quote.accepted` · `invoice.sent` · `payment.paid` · `payment.failed` · `action.executed` · `note.added` · … | — |
 | `occurred_at` | timestamptz not null | Wanneer het gebeurde (niet wanneer wij het zagen) | — |
 | `thread_key` | text null | Gespreks-ID bij de bron (Gmail-thread, Outlook-conversation) voor groeperen | — |
+| `internet_message_id` | text null | Header `Message-ID` van een mail (max. 998 tekens, één token zonder spaties), voor `In-Reply-To`/`References` bij een antwoord. Op `events` en niet in `event_contents`, omdat hij ook na de retentie nodig is (#086) | P |
 | `summary` | text null | Korte samenvatting door de AI; blijft na het verlopen van de bron-inhoud | I |
 | `summarized_at` | timestamptz null | | — |
 | `payload` | jsonb not null | Minimale metadata per type (Zod), bijv. richting, provider-object-ID, momentopname van bedrag in centen + btw-tarief. Geen mailtekst, geen adressen | — / I |
@@ -459,7 +461,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - **Append-only:** geen UPDATE behalve `summary` en `summarized_at` (kolomrecht), want samenvatten gebeurt in een latere job. De trigger `events_summary_once` staat dat alleen toe zolang `summary is null`; daarna geeft hij `integrity_constraint_violation`. `setEventSummary()` werkt met `where summary is null` en geeft `false` terug als er al een samenvatting was.
 - **Payload per type** (`packages/shared/src/domain/event.ts`): mail `{ attachmentCount?, labels?, backfill? }` (`labels`: systeemlabels uit een vaste lijst, nooit eigen labelnamen; `backfill`: uit de eerste sync van 14 dagen); offerte en factuur `{ providerObjectId, documentNumber?, totalExclVatCents, vatRateBps }`; betaling `{ providerPaymentId, amountCents, currency: 'EUR', failureCode? }`; `action.executed` `{ providerObjectId }`; `note.added` `{}` (de tekst van een notitie hoort in `event_contents`).
 - **Idempotent opnemen:** `recordEvent()` doet `on conflict (tenant_id, source, external_id) do nothing` en geeft dan het bestaande event terug (`created: false`), zonder de inhoud aan te raken.
-- **Persoonsgegevens:** `summary` (I). `payload` mag volgens het Zod-schema geen vrije tekst bevatten; momentopnames zijn ID's, nummers en bedragen.
+- **Persoonsgegevens:** `summary` (I); `internet_message_id` (P), want sommige mailprogramma's zetten het adres of de naam van de afzender erin. `payload` mag volgens het Zod-schema geen vrije tekst bevatten; momentopnames zijn ID's, nummers en bedragen.
 - **Verwijderen:** hard, alleen door forgetEntity en het ontkoppelen van een connectie. Cascade naar `event_contents`, `event_entities`, `card_events`, `playbook_examples`; `set null` op bronverwijzingen.
 - **Retentie:** zolang de tenant bestaat (de bron-inhoud niet, zie `event_contents`). Zie open vraag 4.
 - **Fase:** 1.

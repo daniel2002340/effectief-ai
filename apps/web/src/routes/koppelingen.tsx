@@ -15,6 +15,7 @@ import {
   noticeForOutcome,
   notices,
   providerLabels,
+  receivedMailText,
   statusText,
   waitForConnection,
 } from '@/lib/connect-flow';
@@ -220,7 +221,8 @@ function ConnectionCard({
           {connection.accountLabel ? ` · ${connection.accountLabel}` : ''}
         </CardTitle>
         <CardDescription>
-          {statusText(connection)} · Laatste synchronisatie: {lastSyncText(connection.lastSyncedAt)}
+          {statusText(connection)} · Laatste synchronisatie: {lastSyncText(connection.lastSyncedAt)}{' '}
+          · {receivedMailText(connection.receivedMailCount)}
         </CardDescription>
       </CardHeader>
       {manageable ? (

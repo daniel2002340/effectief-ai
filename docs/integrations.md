@@ -296,6 +296,7 @@ Volgens docs/data-model.md (`events`, `event_contents`, §6.1 stap 2):
 | | `type` | `email.received` |
 | | `occurred_at` | `receivedAt` |
 | | `thread_key` | `threadId` |
+| | `internet_message_id` | `internetMessageId` (leeg als hij ontbreekt of geen geldig token is; #086) |
 | | `payload` | `{ attachmentCount, labels, backfill }`, alleen getallen, booleans en waarden uit vaste lijsten (geen vrije tekst, zoals nu afgedwongen) |
 | | `summary` | leeg; komt in sessie 5 |
 | `event_contents` | `from_address`, `to_addresses` | genormaliseerd (kleine letters) |
@@ -373,7 +374,7 @@ Queue `mail-ingest`, payload `{ tenantId, connectionId }`, één wachtende job p
 3. `GET /records?model=InboxMessage&cursor=<cursor>&limit=100` (headers `Provider-Config-Key`, `Connection-Id`). **Geen databasetransactie open tijdens de Nango-call**: per pagina eerst ophalen, dan één korte transactie.
 4. Per pagina, in één transactie: elk record met Zod parsen; nieuw of gewijzigd → `recordEvent()` (+ inhoud + koppelingen), verwijderd → §4.5; cursor = `_nango_metadata.cursor` van het laatste record; `connections.last_synced_at`.
 5. Tot `next_cursor` leeg is. Daarna `POST /records/prune` met `until_cursor` = de opgeslagen cursor (buiten de transactie; idempotent, dus een mislukte prune gaat bij de volgende run mee).
-6. Een record dat niet door Zod komt: loggen met record-ID, de rest van de pagina gaat door, cursor schuift door, teller in de audit. Een kapotte mail mag de connectie niet blokkeren; de fixture-tests moeten zulke gevallen vangen.
+6. Een record dat niet door Zod komt: loggen met record-ID en één Sentry-melding per record (`InvalidMailRecordError`, alleen record-, connectie-, tenant- en job-ID; nooit de inhoud of de parse-fout), de rest van de pagina gaat door, cursor schuift door, teller in de audit. Een kapotte mail mag de connectie niet blokkeren; de fixture-tests moeten zulke gevallen vangen.
 
 ### 4.3 Vangnet-job
 

@@ -18,6 +18,7 @@ import {
   mailIngestJobSchema,
   mailIngestSweepJobSchema,
   mailIngestTenantJobSchema,
+  type ReportError,
 } from '@effectief/shared';
 import type { Queue } from 'bullmq';
 import type { Logger } from 'pino';
@@ -44,6 +45,14 @@ type MailProvider = (typeof mailProviders)[number];
 const isMailProvider = (provider: string): provider is MailProvider =>
   (mailProviders as readonly string[]).includes(provider);
 
+/** Reported to Sentry; carries no content, only the identifiers in its context. */
+export class InvalidMailRecordError extends Error {
+  override name = 'InvalidMailRecordError';
+  constructor() {
+    super('invalid mail record');
+  }
+}
+
 /** A run reads at most this many pages; the next webhook or sweep goes on. */
 const MAX_PAGES = 50;
 
@@ -51,6 +60,8 @@ export interface MailIngestDependencies {
   db: Database;
   nango: Pick<NangoClient, 'listRecords' | 'pruneRecords'>;
   log: Logger;
+  /** One Sentry report per invalid record, with identifiers only. */
+  reportError: ReportError;
 }
 
 export type MailIngestResult =
@@ -68,7 +79,7 @@ export type MailIngestResult =
 export async function processMailIngestJob(
   data: unknown,
   job: { jobId: string },
-  { db, nango, log }: MailIngestDependencies,
+  { db, nango, log, reportError }: MailIngestDependencies,
 ): Promise<MailIngestResult> {
   const { tenantId, connectionId } = mailIngestJobSchema.parse(data);
   const ids = { tenantId, connectionId, jobId: job.jobId };
@@ -111,11 +122,10 @@ export async function processMailIngestJob(
       const mail =
         message && normalizeInboxMessage(message, { source: start.provider, connectionId });
       if (!mail) {
-        // Never the record itself: it holds mail content (CLAUDE.md, logging).
-        log.warn(
-          { ...ids, recordId: typeof id === 'string' ? id : undefined },
-          'invalid mail record',
-        );
+        // Never the record or the parse error: they hold mail content (CLAUDE.md, logging).
+        const recordId = typeof id === 'string' ? id : undefined;
+        log.warn({ ...ids, recordId }, 'invalid mail record');
+        reportError(new InvalidMailRecordError(), { ...ids, recordId });
         return { kind: 'invalid' };
       }
       return { kind: 'message', ...mail };

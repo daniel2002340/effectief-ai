@@ -10,10 +10,10 @@ import {
   type TransitionConnectionInput,
   transitionConnectionInputSchema,
 } from '@effectief/shared';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, eq, isNotNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { single } from '../memory/source.ts';
-import { connections, entityExternalRefs } from '../schema/index.ts';
+import { connections, entityExternalRefs, events } from '../schema/index.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 import { writeAudit } from './audit.ts';
 import { assertTransition, missedTransition } from './transition.ts';
@@ -104,6 +104,18 @@ export function listConnections(tx: TenantTransaction, status?: ConnectionStatus
     .from(connections)
     .where(status ? eq(connections.status, z.enum(connectionStatuses).parse(status)) : undefined)
     .orderBy(asc(connections.createdAt), asc(connections.id));
+}
+
+/** How many mails came in per connection (events `email.received`), for the Koppelingen page. */
+export async function countReceivedMailByConnection(
+  tx: TenantTransaction,
+): Promise<Map<string, number>> {
+  const rows = await tx
+    .select({ connectionId: events.connectionId, count: count() })
+    .from(events)
+    .where(and(eq(events.type, 'email.received'), isNotNull(events.connectionId)))
+    .groupBy(events.connectionId);
+  return new Map(rows.flatMap((row) => (row.connectionId ? [[row.connectionId, row.count]] : [])));
 }
 
 /**
