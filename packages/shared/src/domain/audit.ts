@@ -100,6 +100,20 @@ const retentionPurgedMetadata = z.strictObject({
   count,
 });
 
+/** A page of mail records from Nango (docs/integrations.md §4.2). */
+const mailIngestedMetadata = z.strictObject({
+  provider: z.enum(connectionProviders),
+  records: count,
+  created: count,
+  removed: count,
+  invalid: count,
+});
+
+const mailContentRemovedMetadata = z.strictObject({
+  provider: z.enum(connectionProviders),
+  count,
+});
+
 export const auditMetadataSchemas = {
   'connection.created': connectionMetadata,
   'connection.reactivated': connectionMetadata,
@@ -129,6 +143,8 @@ export const auditMetadataSchemas = {
   'playbook.retired': playbookMetadata,
   'entity.forgotten': entityForgottenMetadata,
   'retention.purged': retentionPurgedMetadata,
+  'mail.ingested': mailIngestedMetadata,
+  'mail.content_removed': mailContentRemovedMetadata,
 } satisfies Record<AuditAction, z.ZodType>;
 
 export type AuditMetadata<A extends AuditAction = AuditAction> = z.infer<

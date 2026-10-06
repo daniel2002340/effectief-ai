@@ -296,6 +296,58 @@ describe('Nango client', () => {
     ).rejects.toMatchObject({ kind: 'unavailable' });
   });
 
+  describe('records', () => {
+    const ref = { integrationId: 'gmail', connectionId: 'c1' };
+
+    it('lists a page after the cursor and separates the fields from Nango metadata', async () => {
+      calls.length = 0;
+      const page = await client(
+        respond(200, {
+          records: [
+            {
+              id: 'm1',
+              subject: 'x',
+              _nango_metadata: { cursor: 'r1', deleted_at: null, last_action: 'ADDED' },
+            },
+            { id: 'm2', _nango_metadata: { cursor: 'r2', deleted_at: '2026-10-06T08:00:00Z' } },
+            { id: 'm3', _nango_metadata: { cursor: 'r3', pruned_at: '2026-10-06T08:00:00Z' } },
+          ],
+          next_cursor: 'r3',
+        }),
+      ).listRecords(ref, { model: 'InboxMessage', cursor: 'r0' });
+      expect(page).toEqual({
+        records: [
+          { fields: { id: 'm1', subject: 'x' }, cursor: 'r1', deleted: false, pruned: false },
+          { fields: { id: 'm2' }, cursor: 'r2', deleted: true, pruned: false },
+          { fields: { id: 'm3' }, cursor: 'r3', deleted: false, pruned: true },
+        ],
+        nextCursor: 'r3',
+      });
+      expect(calls[0]?.url).toBe(
+        'https://api.nango.dev/records?model=InboxMessage&limit=100&cursor=r0',
+      );
+      const headers = calls[0]?.init.headers as Record<string, string> | undefined;
+      expect(headers?.['connection-id']).toBe('c1');
+    });
+
+    it('prunes until Nango has no more', async () => {
+      calls.length = 0;
+      let call = 0;
+      const result = await client(async (url, init) => {
+        calls.push({ url: String(url), init: init ?? {} });
+        call += 1;
+        return new Response(JSON.stringify({ count: 1000, has_more: call < 2 }), { status: 200 });
+      }).pruneRecords(ref, { model: 'InboxMessage', untilCursor: 'r3' });
+      expect(result).toEqual({ count: 2000 });
+      expect(calls).toHaveLength(2);
+      expect(calls[0]?.init.method).toBe('PATCH');
+      expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+        model: 'InboxMessage',
+        until_cursor: 'r3',
+      });
+    });
+  });
+
   it('triggers an action with the connection headers and parses its output', async () => {
     calls.length = 0;
     const output = await client(respond(200, { accountId: 'a1', email: 'x@y.z' })).triggerAction(

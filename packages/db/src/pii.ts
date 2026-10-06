@@ -92,7 +92,9 @@ export const piiRegister: Record<string, Record<string, PiiClass>> = {
     event_id: '-',
     tenant_id: '-',
     from_address: 'P',
+    from_name: 'P',
     to_addresses: 'P',
+    cc_addresses: 'P',
     subject: 'I',
     body_text: 'I',
     attachments: 'I',
@@ -159,6 +161,15 @@ export const piiRegister: Record<string, Record<string, PiiClass>> = {
     nango_connection_id: '-',
     failure_code: '-',
     created_at: '-',
+  },
+  sync_cursors: {
+    tenant_id: '-',
+    connection_id: '-',
+    model: '-',
+    // Nango's opaque position in the record stream.
+    cursor: '-',
+    created_at: '-',
+    updated_at: '-',
   },
   webhook_deliveries: {
     id: '-',

@@ -30,6 +30,8 @@ export function createFakeNango(overrides: Partial<NangoClient> = {}): NangoClie
     getConnection: down,
     deleteConnection: down,
     triggerAction: down,
+    listRecords: down,
+    pruneRecords: down,
     ...overrides,
   };
 }

@@ -70,6 +70,7 @@ const expectedGrants: Record<string, Expected> = {
     table: ['SELECT', 'INSERT', 'DELETE'],
     updateColumns: ['consumed_at', 'connection_id', 'nango_connection_id', 'failure_code'],
   },
+  sync_cursors: { table: ['SELECT', 'INSERT'], updateColumns: ['cursor', 'updated_at'] },
   webhook_deliveries: {
     table: ['SELECT', 'INSERT', 'DELETE'],
     updateColumns: ['status', 'attempts', 'last_error_code', 'processed_at'],

@@ -53,6 +53,12 @@ const fakeNango = {
   triggerAction: async () => {
     throw new Error('not used by the api');
   },
+  listRecords: async () => {
+    throw new Error('not used by the api');
+  },
+  pruneRecords: async () => {
+    throw new Error('not used by the api');
+  },
 } satisfies NangoClient;
 
 let app: FastifyInstance;

@@ -49,7 +49,160 @@
         "features": []
       }
     ],
-    "syncs": [],
+    "syncs": [
+      {
+        "type": "sync",
+        "description": "New mail in the Gmail inbox, without spam, trash, Promotions and Social",
+        "auto_start": true,
+        "endpoints": [],
+        "input": null,
+        "name": "inbox-messages",
+        "output": [
+          "InboxMessage"
+        ],
+        "runs": "every 5 minutes",
+        "scopes": [
+          "https://www.googleapis.com/auth/gmail.readonly"
+        ],
+        "sync_type": "full",
+        "track_deletes": false,
+        "usedModels": [
+          "InboxMessage"
+        ],
+        "version": "1.0.0",
+        "webhookSubscriptions": [],
+        "json_schema": {
+          "definitions": {
+            "InboxMessage": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Gmail message id. Example: \"19a0c4e2f1b3d5a7\""
+                },
+                "threadId": {
+                  "type": "string",
+                  "description": "Gmail thread id. Example: \"19a0c4e2f1b3d5a7\""
+                },
+                "internetMessageId": {
+                  "description": "The Message-ID header. Example: \"<abc@mail.example>\"",
+                  "type": "string"
+                },
+                "receivedAt": {
+                  "type": "string",
+                  "description": "ISO 8601, from internalDate. Example: \"2026-10-06T08:15:00.000Z\""
+                },
+                "from": {
+                  "type": "object",
+                  "properties": {
+                    "address": {
+                      "type": "string",
+                      "description": "Example: \"jan@bedrijf.nl\""
+                    },
+                    "name": {
+                      "description": "Display name. Example: \"Jan de Vries\"",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "address"
+                  ],
+                  "additionalProperties": false
+                },
+                "to": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Addresses only, no names"
+                },
+                "cc": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Addresses only, no names"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "bodyText": {
+                  "type": "string",
+                  "maxLength": 32000,
+                  "description": "Plain text; HTML converted, max 32000 chars"
+                },
+                "labels": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "INBOX",
+                      "UNREAD",
+                      "IMPORTANT",
+                      "STARRED",
+                      "CATEGORY_PERSONAL",
+                      "CATEGORY_UPDATES",
+                      "CATEGORY_FORUMS"
+                    ]
+                  }
+                },
+                "attachments": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "Example: \"application/pdf\""
+                      },
+                      "size": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991,
+                        "description": "Bytes"
+                      },
+                      "attachmentId": {
+                        "type": "string",
+                        "description": "Stable reference to fetch it later: the Gmail partId (Gmail attachment ids change per fetch). Example: \"1.2\""
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "mimeType",
+                      "size",
+                      "attachmentId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "backfill": {
+                  "type": "boolean",
+                  "description": "True for mail from the first 14-day sync"
+                }
+              },
+              "required": [
+                "id",
+                "threadId",
+                "receivedAt",
+                "to",
+                "cc",
+                "bodyText",
+                "labels",
+                "attachments",
+                "backfill"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "features": [
+          "checkpoints"
+        ]
+      }
+    ],
     "onEventScripts": {
       "post-connection-creation": [],
       "pre-connection-deletion": [],

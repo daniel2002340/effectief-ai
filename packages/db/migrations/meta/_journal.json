@@ -141,6 +141,20 @@
       "when": 1791216718747,
       "tag": "0019_connect_attempts_rls_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791291561921,
+      "tag": "0020_sync_cursors",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791291562543,
+      "tag": "0021_sync_cursors_rls_grants",
+      "breakpoints": true
     }
   ]
 }
