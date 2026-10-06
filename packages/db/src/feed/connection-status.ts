@@ -1,5 +1,5 @@
 import type { AuditContext, ConnectionProvider } from '@effectief/shared';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne } from 'drizzle-orm';
 import { cards, connections } from '../schema/index.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 import { writeAudit } from './audit.ts';
@@ -141,8 +141,12 @@ export async function getConnectionByNangoId(tx: TenantTransaction, nangoConnect
   return row;
 }
 
-/** The active connection of this tenant to the same provider account, if any. */
-export async function findActiveAccountConnection(
+/**
+ * A connection of this tenant to the same provider account that still counts:
+ * active, or expired (the user renews that one instead of connecting anew, so
+ * the mailbox's mail never belongs to two connections).
+ */
+export async function findLiveAccountConnection(
   tx: TenantTransaction,
   provider: ConnectionProvider,
   externalAccountId: string,
@@ -154,8 +158,33 @@ export async function findActiveAccountConnection(
       and(
         eq(connections.provider, provider),
         eq(connections.externalAccountId, externalAccountId),
-        eq(connections.status, 'active'),
+        inArray(connections.status, ['active', 'expired']),
       ),
     );
   return row;
+}
+
+/**
+ * Whether an earlier, disconnected connection to the same account still waits
+ * for its purge. Its events carry the same provider IDs: a new connection that
+ * took them in now would find them taken, and lose them when the purge runs.
+ */
+export async function isAccountAwaitingPurge(
+  tx: TenantTransaction,
+  connection: Pick<Connection, 'id' | 'provider' | 'externalAccountId'>,
+): Promise<boolean> {
+  if (!connection.externalAccountId) return false;
+  const [row] = await tx
+    .select({ id: connections.id })
+    .from(connections)
+    .where(
+      and(
+        eq(connections.provider, connection.provider),
+        eq(connections.externalAccountId, connection.externalAccountId),
+        eq(connections.status, 'revoked'),
+        ne(connections.id, connection.id),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }

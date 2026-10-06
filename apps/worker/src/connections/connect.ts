@@ -4,7 +4,7 @@ import {
   createConnection,
   type Database,
   failConnectAttempt,
-  findActiveAccountConnection,
+  findLiveAccountConnection,
   getConnectAttempt,
   getConnectionByNangoId,
   isOpenConnectAttempt,
@@ -110,7 +110,7 @@ export async function finishConnectAttempt(
     const locked = await lockConnectAttempt(tx, attemptId);
     if (!locked || !isOpenConnectAttempt(locked, now())) return 'not_open';
     if (await getConnectionByNangoId(tx, nangoConnectionId)) return 'already_connected';
-    const duplicate = await findActiveAccountConnection(
+    const duplicate = await findLiveAccountConnection(
       tx,
       locked.provider,
       account.externalAccountId,

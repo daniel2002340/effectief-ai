@@ -16,13 +16,14 @@ import {
   entityExternalRefs,
   eventEntities,
   events,
+  syncCursors,
 } from '../schema/index.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 
 // Disconnecting a connection (docs/data-model.md connections, §6.3): the user
 // disconnects (→ revoked), then a job deletes the data that came through it
 // (→ purged). The connection row stays as a tombstone for audit and for late
-// webhooks. Revoking the grant at Nango is not built yet (docs/todo.md).
+// webhooks. The purge job deletes the connection at Nango first (§5.3).
 
 const unique = (rows: { id: string }[]) => [...new Set(rows.map((row) => row.id))];
 
@@ -61,6 +62,7 @@ export type PurgeResult =
  *   connection_problem cards (cascade: their actions);
  * - its events (cascade: contents, links, playbook examples);
  * - its external references and its documents (cascade: chunks, embeddings);
+ * - its sync cursors;
  * - entities that only existed because of it: nothing links to them anymore
  *   and the user confirmed nothing about them.
  * An active connection is refused (TransitionError); disconnect it first.
@@ -120,6 +122,8 @@ export async function purgeConnection(
     .delete(documents)
     .where(eq(documents.connectionId, connectionId))
     .returning({ id: documents.id });
+  // The position in Nango's record stream means nothing once the connection is gone there.
+  await tx.delete(syncCursors).where(eq(syncCursors.connectionId, connectionId));
   const deletedEntities = candidateEntityIds.length
     ? await tx
         .delete(entities)

@@ -15,7 +15,11 @@ import {
 } from '@effectief/shared';
 import { type ConnectionOptions, Queue, Worker } from 'bullmq';
 import type { Logger } from 'pino';
-import { handleAuthWebhook, type LifecycleDependencies } from './connections/lifecycle.ts';
+import {
+  handleAuthWebhook,
+  handleSyncWebhook,
+  type LifecycleDependencies,
+} from './connections/lifecycle.ts';
 import {
   processConnectAttemptJob,
   processConnectionSweep,
@@ -140,14 +144,6 @@ export function startWorkers({
     defaultJobOptions,
     ...prefixOption,
   });
-  const lifecycle: LifecycleDependencies = {
-    db,
-    nango,
-    log,
-    enqueuePurge: async (job) => {
-      await purgeQueue.add('purge', job, { jobId: purgeConnectionJobId(job.connectionId) });
-    },
-  };
   const mailIngestQueue = new Queue(queueNames.mailIngest, {
     connection,
     defaultJobOptions,
@@ -161,6 +157,15 @@ export function startWorkers({
         opts: { deduplication: { id: mailIngestDeduplicationId(job) } },
       })),
     );
+  };
+  const lifecycle: LifecycleDependencies = {
+    db,
+    nango,
+    log,
+    enqueuePurge: async (job) => {
+      await purgeQueue.add('purge', job, { jobId: purgeConnectionJobId(job.connectionId) });
+    },
+    enqueueIngest: (job) => enqueueIngest([job]),
   };
   const mailIngest = new Worker(
     queueNames.mailIngest,
@@ -210,26 +215,16 @@ export function startWorkers({
                     commit,
                   })
                 : Promise.resolve(),
-            // A sync webhook is only a signal (§4.1): the ingest reads the
-            // records. Enqueued before the commit; a failed commit retries
-            // and the ingest is idempotent.
-            sync: async ({ tenantId, delivery, payload, commit }) => {
-              if (
-                payload.type === 'sync' &&
-                payload.success &&
-                payload.model === 'InboxMessage' &&
-                delivery.connectionId
-              ) {
-                await enqueueIngest([{ tenantId, connectionId: delivery.connectionId }]);
-              } else if (payload.type === 'sync' && !payload.success) {
-                // No status change: an auth problem comes through auth/refresh (§4.1).
-                log.warn(
-                  { tenantId, deliveryId: delivery.id, errorType: payload.error?.type },
-                  'nango sync failed',
-                );
-              }
-              await commit(async () => {});
-            },
+            sync: ({ tenantId, delivery, payload, jobId, commit }) =>
+              payload.type === 'sync'
+                ? handleSyncWebhook(lifecycle, {
+                    tenantId,
+                    connectionId: delivery.connectionId,
+                    payload,
+                    jobId,
+                    commit,
+                  })
+                : Promise.resolve(),
           },
         },
       ),

@@ -3,7 +3,9 @@ import {
   type Connection,
   createConnectAttempt,
   createConnection,
+  disconnectConnection,
   eq,
+  expireConnection,
   getConnectAttempt,
   getConnection,
   getWebhookDelivery,
@@ -22,7 +24,11 @@ import { createFakeNango } from '@effectief/integrations/testing';
 import type { StoredNangoWebhook } from '@effectief/shared';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { handleAuthWebhook, type LifecycleDependencies } from '../src/connections/lifecycle.ts';
+import {
+  handleAuthWebhook,
+  handleSyncWebhook,
+  type LifecycleDependencies,
+} from '../src/connections/lifecycle.ts';
 import { processTenantAttempts, processTenantHealth } from '../src/jobs/connections.ts';
 import { processNangoWebhookJob } from '../src/jobs/nango-webhook.ts';
 
@@ -41,6 +47,7 @@ let nangoConnections: { connectionId: string; integrationId: string }[] = [];
 let health: { authError: boolean } | 'gone' = { authError: false };
 const deleted: string[] = [];
 const purges: { tenantId: string; connectionId: string }[] = [];
+const ingests: { tenantId: string; connectionId: string }[] = [];
 
 const nango: NangoClient = createFakeNango({
   triggerAction: async (_ref, _name, output) => output.parse(account),
@@ -65,6 +72,9 @@ const deps: LifecycleDependencies = {
   enqueuePurge: async (job) => {
     purges.push(job);
   },
+  enqueueIngest: async (job) => {
+    ingests.push(job);
+  },
 };
 
 const asTenant = <T>(tenant: TestTenant, fn: (tx: TenantTransaction) => Promise<T>) =>
@@ -81,6 +91,7 @@ beforeEach(() => {
   health = { authError: false };
   deleted.length = 0;
   purges.length = 0;
+  ingests.length = 0;
   clock = new Date();
 });
 
@@ -112,7 +123,7 @@ const authPayload = (
 async function deliver(
   tenant: TestTenant,
   target: { connectionId: string } | { connectAttemptId: string },
-  payload: Extract<StoredNangoWebhook, { type: 'auth' }>,
+  payload: StoredNangoWebhook,
 ) {
   const { delivery } = await asTenant(tenant, (tx) =>
     recordWebhookDelivery(tx, {
@@ -135,6 +146,16 @@ async function deliver(
                 tenantId,
                 connectionId: d.connectionId,
                 connectAttemptId: d.connectAttemptId,
+                payload: p,
+                jobId,
+                commit,
+              })
+            : Promise.resolve(),
+        sync: ({ tenantId, delivery: d, payload: p, jobId, commit }) =>
+          p.type === 'sync'
+            ? handleSyncWebhook(deps, {
+                tenantId,
+                connectionId: d.connectionId,
                 payload: p,
                 jobId,
                 commit,
@@ -291,6 +312,40 @@ describe('creation webhook', () => {
     expect(deleted).toEqual([second]);
   });
 
+  it('refuses the same mailbox while its connection is expired: that one is renewed instead', async () => {
+    const first = await connected(A);
+    await asTenant(A, (tx) =>
+      expireConnection(tx, { connectionId: first.id, reason: 'invalid_grant' }),
+    );
+    const attempt = await startAttempt(A);
+    const second = randomUUID();
+    await deliver(
+      A,
+      { connectAttemptId: attempt.id },
+      authPayload('creation', second, {
+        tags: { organization_id: A.tenantId, end_user_id: A.userId },
+      }),
+    );
+    expect((await asTenant(A, (tx) => getConnectAttempt(tx, attempt.id)))?.failureCode).toBe(
+      'duplicate_account',
+    );
+    expect(deleted).toEqual([second]);
+  });
+
+  it('connects the same mailbox again after disconnecting: a new connection', async () => {
+    const first = await connected(A);
+    await asTenant(A, (tx) =>
+      disconnectConnection(tx, {
+        connectionId: first.id,
+        actor: { type: 'user', userId: A.userId },
+      }),
+    );
+    const again = await connected(A);
+    expect(again.id).not.toBe(first.id);
+    expect(again).toMatchObject({ status: 'active', externalAccountId: first.externalAccountId });
+    expect((await asTenant(A, (tx) => getConnection(tx, first.id)))?.status).toBe('revoked');
+  });
+
   it('allows the same mailbox in another tenant', async () => {
     await connected(A);
     const inB = await connected(B);
@@ -332,6 +387,8 @@ describe('auth webhooks on a connection', () => {
       statusReason: 'auth_recovered',
     });
     expect(await openProblemCards(connection)).toHaveLength(0);
+    // Resumes from its cursor right away, not at the next sweep.
+    expect(ingests).toEqual([{ tenantId: A.tenantId, connectionId: connection.id }]);
   });
 
   it('expires with account_mismatch when re-authorized with another account', async () => {
@@ -348,6 +405,7 @@ describe('auth webhooks on a connection', () => {
       accountLabel: 'info@a.example',
     });
     expect(await openProblemCards(connection)).toHaveLength(1);
+    expect(ingests).toEqual([]);
   });
 
   it('reactivates an expired connection re-authorized with the same account', async () => {
@@ -366,6 +424,7 @@ describe('auth webhooks on a connection', () => {
       status: 'active',
       statusReason: 'reauthorized',
     });
+    expect(ingests).toEqual([{ tenantId: A.tenantId, connectionId: connection.id }]);
   });
 
   it('revokes on deletion and enqueues the purge; late webhooks change nothing', async () => {
@@ -436,6 +495,89 @@ describe('auth webhooks on a connection', () => {
       lastErrorCode: 'nango_unavailable',
     });
     expect((await statusOf(connection))?.status).toBe('expired');
+  });
+});
+
+describe('sync webhooks and repeated problems', () => {
+  const syncPayload = (
+    nangoConnectionId: string,
+    success: boolean,
+  ): Extract<StoredNangoWebhook, { type: 'sync' }> => ({
+    type: 'sync',
+    connectionId: nangoConnectionId,
+    providerConfigKey: 'gmail',
+    syncName: 'inbox-messages',
+    model: 'InboxMessage',
+    success,
+    ...(success
+      ? { responseResults: { added: 1, updated: 0, deleted: 0 } }
+      : { error: { type: 'script_http_error' } }),
+  });
+  const problemCards = (connection: Connection) =>
+    asTenant(A, (tx) =>
+      tx.select().from(schema.cards).where(eq(schema.cards.connectionId, connection.id)),
+    );
+
+  it('a finished sync enqueues the ingest of that connection', async () => {
+    const connection = await connected(A);
+    const delivery = await deliver(
+      A,
+      { connectionId: connection.id },
+      syncPayload(connection.nangoConnectionId, true),
+    );
+    expect(delivery?.status).toBe('processed');
+    expect(ingests).toEqual([{ tenantId: A.tenantId, connectionId: connection.id }]);
+  });
+
+  it('a failed sync of a connection that still works changes nothing', async () => {
+    const connection = await connected(A);
+    await deliver(
+      A,
+      { connectionId: connection.id },
+      syncPayload(connection.nangoConnectionId, false),
+    );
+    expect((await asTenant(A, (tx) => getConnection(tx, connection.id)))?.status).toBe('active');
+    expect(await problemCards(connection)).toHaveLength(0);
+    expect(ingests).toEqual([]);
+  });
+
+  it('a failed sync with lost access expires the connection: one card, however often it is reported', async () => {
+    const connection = await connected(A);
+    health = { authError: true };
+    await deliver(
+      A,
+      { connectionId: connection.id },
+      syncPayload(connection.nangoConnectionId, false),
+    );
+    expect(await asTenant(A, (tx) => getConnection(tx, connection.id))).toMatchObject({
+      status: 'expired',
+      statusReason: 'invalid_grant',
+    });
+
+    // The same problem again, through every route that reports it.
+    await deliver(
+      A,
+      { connectionId: connection.id },
+      syncPayload(connection.nangoConnectionId, false),
+    );
+    await deliver(
+      A,
+      { connectionId: connection.id },
+      authPayload('refresh', connection.nangoConnectionId, { success: false }),
+    );
+    await deliver(
+      A,
+      { connectionId: connection.id },
+      authPayload('refresh', connection.nangoConnectionId, { success: false }),
+    );
+    await processTenantHealth({ tenantId: A.tenantId }, { jobId: 'h-repeat' }, deps);
+
+    const cards = await problemCards(connection);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ kind: 'connection_problem', status: 'open' });
+    expect((await asTenant(A, (tx) => getConnection(tx, connection.id)))?.status).toBe('expired');
+    // Not fetched while expired: mail-ingest.test.ts ('not active') and the sweep skip it.
+    expect(ingests).toEqual([]);
   });
 });
 
