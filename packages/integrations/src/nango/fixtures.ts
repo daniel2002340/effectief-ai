@@ -7,9 +7,14 @@
 // in lower case ("staging"), `tags` is present on both, and every auth body
 // carries `from: "nango"`.
 //
-// The others (override, refresh, sync) follow the examples in the Nango docs
-// (guides/platform/webhooks-from-nango, read 2026-10-05) with the same base:
-// staging has not sent them yet. Replace them once it has (docs/todo.md).
+// sync (finished): captured on staging the same way, with the connection ID
+// and Gmail's historyId replaced. It carries more than the docs show:
+// `from`, `queryTimeStamp`, `syncVariant`, and our flat checkpoint (#085).
+//
+// The others (override, refresh, a failed sync) follow the examples in the
+// Nango docs (guides/platform/webhooks-from-nango, read 2026-10-05) with the
+// same base: staging had not sent them by 2026-10-06. Replace them once it
+// has (docs/todo.md).
 
 const connectionId = '3f2b9c4e-1d7a-4e6b-9a51-0c8d2e7f6a13';
 const tenantId = '0199a1b2-0000-7000-8000-00000000a001';
@@ -45,17 +50,24 @@ export const nangoWebhookFixtures = {
   authRefreshRecovered: { ...authBase, operation: 'refresh', success: true },
   /** Captured on staging. */
   authDeletion: { ...authBase, success: true, operation: 'deletion' },
+  /** Captured on staging. */
   syncSuccess: {
-    type: 'sync',
-    connectionId,
-    providerConfigKey: 'gmail',
     syncName: 'inbox-messages',
+    checkpoints: {
+      from: { phase: 'history', historyId: '1000100', pageToken: '' },
+      to: { phase: 'history', historyId: '1000120', pageToken: '' },
+    },
+    queryTimeStamp: '2026-10-06T16:22:07.703Z',
+    type: 'sync',
+    syncVariant: 'base',
+    responseResults: { deleted: 0, added: 2, updated: 0 },
+    modifiedAfter: '2026-10-06T16:22:07.703Z',
+    success: true,
+    connectionId,
+    from: 'nango',
     model: 'InboxMessage',
     syncType: 'INCREMENTAL',
-    success: true,
-    modifiedAfter: '2026-10-05T12:00:00.000Z',
-    responseResults: { added: 2, updated: 0, deleted: 0 },
-    checkpoints: { from: { historyId: '100' }, to: { historyId: '120' } },
+    providerConfigKey: 'gmail',
   },
   syncFailed: {
     type: 'sync',
