@@ -11,6 +11,7 @@ export const queueNames = {
   retention: 'retention',
   forgetEntity: 'forget-entity',
   purgeConnection: 'purge-connection',
+  nangoWebhook: 'nango-webhook',
   /** Only outside production: a job that fails on purpose (decision #069). */
   monitoringTest: 'monitoring-test',
 } as const;
@@ -68,6 +69,18 @@ export const purgeConnectionJobSchema = tenantJobSchema.extend({
   connectionId: z.uuid(),
 });
 export type PurgeConnectionJob = z.infer<typeof purgeConnectionJobSchema>;
+
+/**
+ * Processes one stored webhook delivery (#038, docs/integrations.md §4.1).
+ * The tenant came from resolve_connection(), never from the body.
+ */
+export const nangoWebhookJobSchema = tenantJobSchema.extend({
+  deliveryId: z.uuid(),
+});
+export type NangoWebhookJob = z.infer<typeof nangoWebhookJobSchema>;
+
+/** One job per delivery: a repeated webhook adds nothing to the queue. */
+export const nangoWebhookJobId = (deliveryId: string) => `nango-webhook-${deliveryId}`;
 
 /** Nothing but the tenant: the job fails on purpose and needs no data. */
 export const monitoringTestJobSchema = tenantJobSchema.strict();

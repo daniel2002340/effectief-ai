@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '@effectief/db';
+import { nangoTestEnv } from '@effectief/integrations/testing';
 import { defaultJobOptions, parseEnv, queueNames } from '@effectief/shared';
 import { Queue, QueueEvents } from 'bullmq';
 import { pino } from 'pino';
@@ -9,7 +10,7 @@ import { workerEnvSchema } from '../src/env.ts';
 import { processExampleJob } from '../src/jobs/example.ts';
 import { startWorkers } from '../src/worker.ts';
 
-const env = parseEnv(workerEnvSchema, { ...process.env, LOG_LEVEL: 'silent' });
+const env = parseEnv(workerEnvSchema, { ...process.env, ...nangoTestEnv, LOG_LEVEL: 'silent' });
 const log = pino({ level: 'silent' });
 const TENANT = '00000000-0000-4000-8000-00000000000a';
 

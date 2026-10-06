@@ -15,6 +15,7 @@ import {
   openTestDatabases,
   type TestTenant,
 } from '@effectief/db/testing';
+import { nangoTestEnv } from '@effectief/integrations/testing';
 import {
   defaultJobOptions,
   parseEnv,
@@ -36,7 +37,7 @@ import { startWorkers } from '../src/worker.ts';
 // Retention, forgetting and purging as jobs, through Valkey with an own key
 // prefix, against Postgres as app_runtime.
 
-const env = parseEnv(workerEnvSchema, { ...process.env, LOG_LEVEL: 'silent' });
+const env = parseEnv(workerEnvSchema, { ...process.env, ...nangoTestEnv, LOG_LEVEL: 'silent' });
 const log = pino({ level: 'silent' });
 const db = openTestDatabases();
 const prefix = `test-${randomUUID()}`;

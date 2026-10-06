@@ -66,6 +66,10 @@ const expectedGrants: Record<string, Expected> = {
     ],
   },
   entity_external_refs: { table: ['SELECT', 'INSERT', 'DELETE'] },
+  webhook_deliveries: {
+    table: ['SELECT', 'INSERT', 'DELETE'],
+    updateColumns: ['status', 'attempts', 'last_error_code', 'processed_at'],
+  },
   cards: {
     table: ['SELECT', 'INSERT', 'DELETE'],
     updateColumns: [

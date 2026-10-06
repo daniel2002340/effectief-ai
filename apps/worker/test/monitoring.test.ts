@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDatabase } from '@effectief/db';
+import { nangoTestEnv } from '@effectief/integrations/testing';
 import {
   MonitoringTestError,
   monitoringTestJobOptions,
@@ -12,7 +13,7 @@ import { afterAll, describe, expect, it, vi } from 'vitest';
 import { workerEnvSchema } from '../src/env.ts';
 import { failedJobContext, startWorkers } from '../src/worker.ts';
 
-const env = parseEnv(workerEnvSchema, { ...process.env, LOG_LEVEL: 'silent' });
+const env = parseEnv(workerEnvSchema, { ...process.env, ...nangoTestEnv, LOG_LEVEL: 'silent' });
 const log = pino({ level: 'silent' });
 const TENANT = '00000000-0000-4000-8000-00000000000b';
 const connection = { url: env.REDIS_URL, maxRetriesPerRequest: null };

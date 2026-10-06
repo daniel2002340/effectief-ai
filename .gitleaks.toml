@@ -10,6 +10,14 @@ regex = '''(?i)nango[\w.\-]{0,40}?(?:secret|key|token)[\w.\-]{0,20}['"]?\s*[:=]\
 secretGroup = 1
 keywords = ["nango"]
 
+# Test values in CI, compose and tests: the nil UUID, or a value that says it is not real.
+[[rules.allowlists]]
+regexTarget = "secret"
+regexes = [
+  '''^0{8}-0{4}-0{4}-0{4}-0{12}$''',
+  '''not-a-real''',
+]
+
 # The Nango Management MCP takes the key as a bearer header (e.g. in .mcp.json),
 # where the line itself does not mention Nango.
 [[rules]]

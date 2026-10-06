@@ -1,9 +1,9 @@
 import { auditContextSchema, type RetentionStep, retentionSteps } from '@effectief/shared';
-import { and, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database } from '../client.ts';
 import { writeAudit } from '../feed/audit.ts';
-import { actions, cards, eventContents } from '../schema/index.ts';
+import { actions, cards, eventContents, webhookDeliveries } from '../schema/index.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 
 // Retention (decision #037, docs/data-model.md event_contents). Source content
@@ -17,6 +17,8 @@ export const retentionPeriods = {
   actionInputDays: 180,
   /** Cards this long after they were closed. */
   closedCardMonths: 12,
+  /** Processed webhook deliveries this long after processing (#038). */
+  webhookDeliveryDays: 30,
 } as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -27,6 +29,7 @@ const auditObjectOf = {
   event_contents: 'event_contents',
   action_inputs: 'actions',
   closed_cards: 'cards',
+  webhook_deliveries: 'webhook_deliveries',
 } as const satisfies Record<RetentionStep, string>;
 
 const batchInputSchema = z.strictObject({
@@ -42,6 +45,9 @@ export function retentionCutoff(step: RetentionStep, now: Date): Date {
   if (step === 'event_contents') return now;
   if (step === 'action_inputs') {
     return new Date(now.getTime() - retentionPeriods.actionInputDays * DAY_MS);
+  }
+  if (step === 'webhook_deliveries') {
+    return new Date(now.getTime() - retentionPeriods.webhookDeliveryDays * DAY_MS);
   }
   const cutoff = new Date(now);
   cutoff.setUTCMonth(cutoff.getUTCMonth() - retentionPeriods.closedCardMonths);
@@ -126,6 +132,22 @@ async function purgeStep(
         .delete(cards)
         .where(inArray(cards.id, expired))
         .returning({ id: cards.id });
+      return rows.length;
+    }
+    case 'webhook_deliveries': {
+      // Only processed ones: a failed delivery stays until it is processed
+      // after all or closed by hand (a failure never disappears silently).
+      const expired = tx
+        .select({ id: webhookDeliveries.id })
+        .from(webhookDeliveries)
+        .where(
+          and(eq(webhookDeliveries.status, 'processed'), lt(webhookDeliveries.processedAt, cutoff)),
+        )
+        .limit(limit);
+      const rows = await tx
+        .delete(webhookDeliveries)
+        .where(inArray(webhookDeliveries.id, expired))
+        .returning({ id: webhookDeliveries.id });
       return rows.length;
     }
   }

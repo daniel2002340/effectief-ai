@@ -134,6 +134,7 @@ export const auditObjectTypes = [
   'playbooks',
   'entities',
   'event_contents',
+  'webhook_deliveries',
 ] as const;
 export type AuditObjectType = (typeof auditObjectTypes)[number];
 
@@ -169,9 +170,15 @@ export type AuditAction = (typeof auditActions)[number];
 
 /**
  * What the retention job removes (docs/data-model.md, event_contents):
- * expired source content, inputs of long-finished actions, long-closed cards.
+ * expired source content, inputs of long-finished actions, long-closed cards,
+ * processed webhook deliveries.
  */
-export const retentionSteps = ['event_contents', 'action_inputs', 'closed_cards'] as const;
+export const retentionSteps = [
+  'event_contents',
+  'action_inputs',
+  'closed_cards',
+  'webhook_deliveries',
+] as const;
 export type RetentionStep = (typeof retentionSteps)[number];
 
 /** `retired`: replaced by a newer version or withdrawn by the user. */

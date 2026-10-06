@@ -14,6 +14,10 @@ import {
   connectionProviders,
   connectionStatuses,
   connectionStatusReasons,
+  type StoredNangoWebhook,
+  webhookDeliveryStatuses,
+  webhookErrorCodes,
+  webhookSources,
 } from '@effectief/shared';
 import { sql } from 'drizzle-orm';
 import {
@@ -78,6 +82,51 @@ export const connections = pgTable(
     ),
     check('connections_purged_label', sql`${t.status} <> 'purged' or ${t.accountLabel} is null`),
     index('connections_tenant_status_idx').on(t.tenantId, t.status),
+    tenantIsolation(t.tenantId),
+  ],
+).enableRLS();
+
+/**
+ * A received webhook, stored before processing (#038): the job does the work,
+ * with retries, and a failure stays visible. Unique per source and delivery,
+ * so a repeated delivery is a no-op. The tenant comes from the connection via
+ * resolve_connection() (migration 0017), never from the body.
+ */
+export const webhookDeliveries = pgTable(
+  'webhook_deliveries',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    connectionId: uuid('connection_id').notNull(),
+    source: text('source', { enum: webhookSources }).notNull(),
+    /** The source's delivery ID, or a hash of the body when it has none (§4.4). */
+    deliveryId: text('delivery_id').notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true }).defaultNow().notNull(),
+    /** What Zod kept of the body: IDs, codes and counts (packages/shared, webhook.ts). */
+    payload: jsonb('payload').$type<StoredNangoWebhook>().notNull(),
+    status: text('status', { enum: webhookDeliveryStatuses }).default('received').notNull(),
+    attempts: smallint('attempts').default(0).notNull(),
+    lastErrorCode: text('last_error_code', { enum: webhookErrorCodes }),
+    processedAt: timestamp('processed_at', { withTimezone: true }),
+  },
+  (t) => [
+    unique('webhook_deliveries_tenant_id_id_unique').on(t.tenantId, t.id),
+    unique('webhook_deliveries_delivery_unique').on(t.tenantId, t.source, t.deliveryId),
+    foreignKey({
+      name: 'webhook_deliveries_connection_fk',
+      columns: [t.tenantId, t.connectionId],
+      foreignColumns: [connections.tenantId, connections.id],
+    }).onDelete('cascade'),
+    check('webhook_deliveries_source', inList(t.source, webhookSources)),
+    check('webhook_deliveries_status', inList(t.status, webhookDeliveryStatuses)),
+    check('webhook_deliveries_last_error_code', inList(t.lastErrorCode, webhookErrorCodes)),
+    check('webhook_deliveries_payload_object', jsonbIs(t.payload, 'object')),
+    check('webhook_deliveries_attempts', sql`${t.attempts} >= 0`),
+    check(
+      'webhook_deliveries_processed',
+      sql`(${t.status} = 'processed') = (${t.processedAt} is not null)`,
+    ),
+    index('webhook_deliveries_tenant_status_idx').on(t.tenantId, t.status, t.receivedAt),
     tenantIsolation(t.tenantId),
   ],
 ).enableRLS();

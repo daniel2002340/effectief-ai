@@ -145,6 +145,20 @@ export const piiRegister: Record<string, Record<string, PiiClass>> = {
     created_at: '-',
     updated_at: '-',
   },
+  webhook_deliveries: {
+    id: '-',
+    tenant_id: '-',
+    connection_id: '-',
+    source: '-',
+    delivery_id: '-',
+    received_at: '-',
+    // IDs, codes and counts only (storedNangoWebhookSchema); still internal.
+    payload: 'I',
+    status: '-',
+    attempts: '-',
+    last_error_code: '-',
+    processed_at: '-',
+  },
   entity_external_refs: {
     id: '-',
     tenant_id: '-',
