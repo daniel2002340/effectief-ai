@@ -20,7 +20,10 @@ export const notices = {
   connected: { tone: 'success', text: 'Je mailbox is gekoppeld.' },
   cancelled: { tone: 'info', text: 'Koppelen afgebroken. Er is niets gekoppeld.' },
   failed: { tone: 'error', text: 'Koppelen is mislukt. Probeer het opnieuw.' },
-  duplicate: { tone: 'error', text: 'Deze mailbox is al gekoppeld.' },
+  duplicate: {
+    tone: 'error',
+    text: 'Deze mailbox is al gekoppeld. Werkt die koppeling niet meer? Kies dan "Koppeling vernieuwen" bij die mailbox.',
+  },
   slow: {
     tone: 'info',
     text: 'Het koppelen duurt langer dan verwacht. Kijk over een paar minuten opnieuw op deze pagina.',
@@ -35,7 +38,7 @@ export const notices = {
   },
   disconnected: {
     tone: 'success',
-    text: 'Ontkoppeld. De mail die via deze koppeling binnenkwam, wordt verwijderd.',
+    text: 'Ontkoppeld. De mail die via deze koppeling binnenkwam, wordt binnen een paar minuten verwijderd.',
   },
   unavailable: { tone: 'error', text: 'Koppelen lukt nu niet. Probeer het later opnieuw.' },
   forbidden: {
@@ -87,12 +90,45 @@ export function statusText(connection: ConnectionSummary): string {
     case 'expired':
       return connection.statusReason === 'account_mismatch'
         ? 'Werkt niet: opnieuw gekoppeld met een ander account'
-        : 'Verlopen: koppel opnieuw om nieuwe mail te blijven zien';
+        : 'Verlopen: er komt geen nieuwe mail binnen';
     case 'revoked':
       return 'Wordt ontkoppeld';
     case 'purged':
       return 'Ontkoppeld';
   }
+}
+
+/** The label of the button that renews an expired connection, here and on the home page. */
+export const renewLabel = 'Koppeling vernieuwen';
+
+/** What the user has to do now, or nothing when the connection just works. */
+export function nextStepText(connection: ConnectionSummary): string | null {
+  const provider = providerLabels[connection.provider];
+  switch (connection.status) {
+    case 'active':
+    case 'purged':
+      return null;
+    case 'revoked':
+      return 'De mail van deze koppeling wordt verwijderd. Dat duurt meestal een paar minuten.';
+    case 'expired': {
+      if (!connection.canManage) {
+        return 'Vraag wie deze koppeling maakte, of een eigenaar, om de koppeling te vernieuwen.';
+      }
+      const account = connection.accountLabel ?? `hetzelfde ${provider}-account als eerst`;
+      return connection.statusReason === 'account_mismatch'
+        ? `Kies "${renewLabel}" en log in met ${account}. Een ander account kan niet in deze koppeling.`
+        : `Kies "${renewLabel}" en log opnieuw in bij ${provider} met ${account}. Je mist geen mail: wat intussen binnenkwam, wordt daarna alsnog opgehaald.`;
+    }
+  }
+}
+
+/** Expired connections that need the user, for the notice on the home page. */
+export const connectionsToRenew = (connections: ConnectionSummary[]) =>
+  connections.filter((connection) => connection.status === 'expired');
+
+export function renewNoticeText(connection: ConnectionSummary): string {
+  const label = connection.accountLabel ? ` (${connection.accountLabel})` : '';
+  return `De koppeling met ${providerLabels[connection.provider]}${label} werkt niet meer. Nieuwe mail komt niet binnen tot je de koppeling vernieuwt.`;
 }
 
 const dateTime = new Intl.DateTimeFormat('nl-NL', {
@@ -113,8 +149,9 @@ export function receivedMailText(receivedMailCount: number): string {
 }
 
 /**
- * Shown before disconnecting. Microsoft has no way for an app to withdraw its
- * own consent for one user (§5.3); Google's we do not withdraw yet either.
+ * Shown before disconnecting. Google's grant is withdrawn on disconnecting;
+ * Microsoft has no way for an app to withdraw its own consent for one user
+ * (docs/integrations.md §5.3), so the user is shown where to do it.
  */
 export function disconnectExplanation(provider: ConnectionSummary['provider']): string {
   const common =
@@ -123,7 +160,7 @@ export function disconnectExplanation(provider: ConnectionSummary['provider']): 
     return `${common} Wil je de toegang ook bij Microsoft weghalen? Ga naar myapps.microsoft.com (werkaccount) of account.live.com/consent/Manage (persoonlijk account).`;
   }
   if (provider === 'gmail') {
-    return `${common} Je kunt de toestemming ook in je Google-account intrekken via myaccount.google.com/permissions.`;
+    return `${common} De toegang van EffectiefAI in je Google-account wordt ook ingetrokken.`;
   }
   return common;
 }

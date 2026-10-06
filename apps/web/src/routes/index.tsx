@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { authClient } from '@/lib/auth-client';
+import { connectionsToRenew, renewLabel, renewNoticeText } from '@/lib/connect-flow';
 import { orpc } from '@/lib/orpc';
 import { requireTenant } from '@/lib/session';
 
@@ -13,6 +14,9 @@ export const Route = createFileRoute('/')({
 
 function HomePage() {
   const { data: tenant } = useSuspenseQuery(orpc.tenant.current.queryOptions());
+  const { data: connections } = useSuspenseQuery(orpc.connections.list.queryOptions());
+  // Until the feed is built (session 5), the card "Koppeling vernieuwen" shows here.
+  const toRenew = connectionsToRenew(connections);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -38,6 +42,18 @@ function HomePage() {
           </div>
         }
       />
+      {toRenew.map((connection) => (
+        <section
+          key={connection.id}
+          role="alert"
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-600/30 bg-amber-50 p-4 text-sm text-amber-950"
+        >
+          <p>{renewNoticeText(connection)}</p>
+          <Button size="sm" asChild>
+            <Link to="/koppelingen">{renewLabel}</Link>
+          </Button>
+        </section>
+      ))}
       <section className="rounded-lg border p-4 text-sm">
         <p>Hier verschijnen straks je kaarten.</p>
       </section>

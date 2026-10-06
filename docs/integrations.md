@@ -2,7 +2,7 @@
 
 Ontwerp voor sessie 4: Gmail en Outlook koppelen via Nango en nieuwe mail binnenhalen tot `events` + bron-inhoud. Geen AI en geen kaarten uit mail; dat is sessie 5.
 
-**Status:** stap 1 en 2 van §10 gebouwd (Nango-basis, koppelen van Gmail en Outlook, met de levenscyclus uit §5 behalve `pre-connection-deletion`); stap 3 (inlezen) gebouwd voor Gmail, end-to-end op staging volgt na de merge. Staging gebruikt voorlopig Nango's testapps (#082). Afwijkingen in de bouw: #084, #085. Beslissingen: #074–#084; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
+**Status:** stap 1–4 van §10 gebouwd voor Gmail: Nango-basis, koppelen (Gmail en Outlook), inlezen (Gmail, end-to-end op staging) en de levenscyclus (§5, met `pre-connection-deletion` voor Gmail). Stap 5 (Outlook inlezen en levenscyclus) volgt. Staging gebruikt voorlopig Nango's testapps (#082). Afwijkingen in de bouw: #084, #085, #087. Beslissingen: #074–#084; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
 
 Inhoud:
 
@@ -187,13 +187,15 @@ Sluit de gebruiker het venster vóór `complete` en is de webhook ook weg, dan v
 
 ### 2.4 Opnieuw koppelen en twee mailboxen
 
-**Opnieuw koppelen** (`expired` → `active`, #044): de kaart "Koppeling vernieuwen" of de knop bij de koppeling roept `connections.reconnect({ connectionId })` aan. De api controleert in `withTenant()` dat de connectie bestaat (RLS) en `expired` of `active` is, en maakt een reconnect session voor die `nango_connection_id`. Nango stuurt daarna `auth/override`; de job doet via `resolve_connection()` `expired → active` met reden `reauthorized` en sluit de open `connection_problem`-kaart. Bij `active` alleen een audit-regel. `revoked` en `purged` zijn eindstatussen (#044): daar is opnieuw koppelen een nieuwe connectie.
+**Opnieuw koppelen** (`expired` → `active`, #044): de kaart "Koppeling vernieuwen" of de knop bij de koppeling roept `connections.reconnect({ connectionId })` aan. De api controleert in `withTenant()` dat de connectie bestaat (RLS) en `expired` of `active` is, en maakt een reconnect session voor die `nango_connection_id`. Nango stuurt daarna `auth/override`; de job doet via `resolve_connection()` `expired → active` met reden `reauthorized`, sluit de open `connection_problem`-kaart en zet direct een `mail-ingest`-job, die verdergaat vanaf de eigen cursor (gebouwd, #087). Bij `active` alleen een audit-regel. `revoked` en `purged` zijn eindstatussen (#044): daar is opnieuw koppelen een nieuwe connectie (zie hieronder).
 
 **Ander account bij opnieuw koppelen:** een reconnect kan met een ander Google- of Microsoft-account inloggen; de connectie zou dan ongemerkt een andere mailbox lezen. Daarom een event function `validate-connection` per provider: bij de eerste koppeling slaat hij het provider-account-ID op in de connectie-metadata (Gmail: hash van `emailAddress` uit `users/me/profile`; Outlook: `id` uit `/me`), bij een reconnect weigert hij een ander account. Nango zet de connectie dan op een auth-fout en de gebruiker ziet in de Connect UI dat het mislukte. Dit patroon staat zo in de Nango-docs.
 
 Tweede laag, in onze eigen code: na elke `override` en elk herstel roept de worker `account-info` opnieuw aan en vergelijkt het resultaat met `external_account_id`. Wijkt het af, dan gaat de connectie naar `expired` (reden `account_mismatch`, nieuw), komt er een kaart, en haalt de ingest niets meer op. Zo leest een connectie nooit een andere mailbox dan bij het koppelen, ook als de Nango-function ontbreekt of faalt.
 
-**Twee mailboxen in één tenant** (bijv. `info@` en `jan@`): twee connecties, elk met een eigen attempt, cursor en `account_label`. De bestaande partiële unique `(tenant_id, provider, external_account_id) where status = 'active'` voorkomt dat dezelfde mailbox twee keer actief gekoppeld wordt. Botst de nieuwe connectie daarop, dan maakt de job geen tweede connectie, verwijdert hij de nieuwe Nango-connectie (die is aantoonbaar van ons: de attempt klopt) en zet hij `connect_attempts.failure_code = 'duplicate_account'`; de web-app toont "Deze mailbox is al gekoppeld". Een mail die in beide mailboxen binnenkomt (cc aan beide) wordt twee events, één per mailbox; dat blijft zo (§8, vraag 5).
+**Twee mailboxen in één tenant** (bijv. `info@` en `jan@`): twee connecties, elk met een eigen attempt, cursor en `account_label`. De bestaande partiële unique `(tenant_id, provider, external_account_id) where status = 'active'` voorkomt dat dezelfde mailbox twee keer actief gekoppeld wordt. De job kijkt ook naar een `expired` connectie op hetzelfde account (`findLiveAccountConnection()`, #087): die vernieuwt de gebruiker, anders zouden de mails van één mailbox over twee connecties verdeeld raken. Botst de nieuwe connectie daarop, dan maakt de job geen tweede connectie, verwijdert hij de nieuwe Nango-connectie (die is aantoonbaar van ons: de attempt klopt) en zet hij `connect_attempts.failure_code = 'duplicate_account'`; de web-app toont "Deze mailbox is al gekoppeld. Werkt die koppeling niet meer? Kies dan "Koppeling vernieuwen" bij die mailbox."
+
+**Dezelfde mailbox na ontkoppelen opnieuw koppelen** (gebouwd, #087): een nieuwe connectie met een eigen cursor; de oude blijft als grafsteen. Zolang de oude nog `revoked` is (de purge loopt nog), wacht de ingest van de nieuwe (`awaiting_purge`, cursor blijft staan): `events` is uniek op `(tenant_id, source, external_id)` en Gmail-ID's zijn per mailbox vast, dus anders zouden de oude events de nieuwe blokkeren en daarna met de purge verdwijnen. Na de purge haalt de volgende sweep alles op voor de nieuwe connectie. Een mail die in beide mailboxen binnenkomt (cc aan beide) wordt twee events, één per mailbox; dat blijft zo (§8, vraag 5).
 
 `external_account_id` en `account_label` komen uit een kleine Nango-action `account-info` (alleen lezen: Gmail `users/me/profile`, Graph `/me?$select=id,mail,userPrincipalName`), die de worker direct na het aanmaken aanroept. Dat is geen schrijfactie naar buiten, dus geen actiepijplijn (CLAUDE.md, Acties).
 
@@ -356,12 +358,12 @@ De job verwerkt per soort (alles binnen `withTenant()`, effect en `webhook_deliv
 | Soort | Effect |
 |---|---|
 | `auth/creation` | §2.2: connectie aanmaken, attempt verbruiken, daarna `account-info` |
-| `auth/override` | §2.4: `expired → active` (`reauthorized`), kaart sluiten |
+| `auth/override` | §2.4: accountcontrole, `expired → active` (`reauthorized`), kaart sluiten, `mail-ingest` |
 | `auth/refresh` mislukt | §5.1: `active → expired` (`invalid_grant`) + kaart |
-| `auth/refresh` hersteld | §5.1: `expired → active` (`auth_recovered`, nieuw), kaart sluiten |
+| `auth/refresh` hersteld | §5.1: accountcontrole, `expired → active` (`auth_recovered`), kaart sluiten, `mail-ingest` |
 | `auth/deletion` | §5.2: `active`/`expired → revoked` (`provider_revoked`) + `purge-connection` |
 | `sync` gelukt | job `mail-ingest` voor de connectie |
-| `sync` mislukt | loggen met `error.type`; geen statuswijziging (een auth-probleem komt via `auth/refresh`); de vangnet-job probeert het later |
+| `sync` mislukt | loggen met `error.type`, daarna direct de gezondheidscontrole van §4.6 voor deze ene connectie: meldt Nango een auth-fout, dan `active → expired` + kaart (§5.1); anders niets. Nango's `error.type` is geen vaste lijst, dus we raden niet op basis daarvan (#087) |
 
 Een mislukte verwerking wordt herhaald (standaard jobopties, 5 pogingen); daarna `failed` met `last_error_code`, Sentry-melding, en hij blijft staan (data-model: een fout verdwijnt nooit stil).
 
@@ -369,8 +371,8 @@ Een mislukte verwerking wordt herhaald (standaard jobopties, 5 pogingen); daarna
 
 Queue `mail-ingest`, payload `{ tenantId, connectionId }`, één wachtende job per connectie (BullMQ-deduplicatie op `ingest:<connectionId>`), zodat webhook en vangnet niet dubbel werken.
 
-1. `withTenant()`: connectie laden; niet `active` → klaar.
-2. Cursorrij lezen met `FOR UPDATE` (nieuwe tabel `sync_cursors`, §9): één ingest tegelijk per connectie, ook bij twee workers.
+1. `withTenant()`: connectie laden; niet `active` → klaar. Wacht een eerdere connectie op dezelfde mailbox nog op haar purge → `awaiting_purge`, klaar (§2.4).
+2. Cursor lezen uit `sync_cursors` (§9). Geen lock tijdens de Nango-call: elke pagina-transactie controleert of de cursor nog dezelfde is (compare-and-set) en stopt anders (#085).
 3. `GET /records?model=InboxMessage&cursor=<cursor>&limit=100` (headers `Provider-Config-Key`, `Connection-Id`). **Geen databasetransactie open tijdens de Nango-call**: per pagina eerst ophalen, dan één korte transactie.
 4. Per pagina, in één transactie: elk record met Zod parsen; nieuw of gewijzigd → `recordEvent()` (+ inhoud + koppelingen), verwijderd → §4.5; cursor = `_nango_metadata.cursor` van het laatste record; `connections.last_synced_at`.
 5. Tot `next_cursor` leeg is. Daarna `POST /records/prune` met `until_cursor` = de opgeslagen cursor (buiten de transactie; idempotent, dus een mislukte prune gaat bij de volgende run mee).
@@ -420,25 +422,37 @@ Nango probeert een webhook 2 keer opnieuw, binnen een seconde (§0.1). Een deplo
 
 ## 5. Levenscyclus van een connectie
 
-Statussen en overgangen uit CLAUDE.md en #044: `active → revoked | expired`, `expired → active | revoked | purged`, `revoked → purged`.
+Gebouwd (#077, #084, #087). Statussen en overgangen uit CLAUDE.md en #044: `active → revoked | expired`, `expired → active | revoked | purged`, `revoked → purged`.
 
 ```mermaid
 stateDiagram-v2
     [*] --> active: auth/creation + attempt klopt
-    active --> expired: auth/refresh mislukt
-    expired --> active: auth/override (reconnect) of auth/refresh hersteld
+    active --> expired: refresh mislukt, sync mislukt met auth-fout, of gezondheidscontrole
+    expired --> active: auth/override (reconnect) of refresh hersteld, na accountcontrole
     active --> revoked: ontkoppelen of auth/deletion
     expired --> revoked: ontkoppelen of auth/deletion
     revoked --> purged: job purge-connection
     expired --> purged: (bestaat, niet gebruikt door dit ontwerp)
 ```
 
-### 5.1 Token vernieuwen mislukt
+| Wat gebeurt er | Waar het binnenkomt | Gevolg | Code |
+|---|---|---|---|
+| Toegang werkt niet meer | `auth/refresh` mislukt; `sync` mislukt en Nango meldt een auth-fout; gezondheidscontrole (elk uur) | `active → expired` (`invalid_grant`), één kaart `connection_problem`, geen ingest meer | `expireConnection()`, `handleAuthWebhook()`, `handleSyncWebhook()`, `checkConnectionHealth()` |
+| Ander account na opnieuw koppelen | `account-info` na `override`/herstel | `expired` (`account_mismatch`) + kaart | `applyAccountCheck()` |
+| Toegang werkt weer | `auth/override`, `auth/refresh` hersteld, of gezondheidscontrole | `expired → active`, kaart `done`, direct `mail-ingest` vanaf de cursor | `reactivateConnection()` |
+| Weg bij Nango | `auth/deletion`, of 404 in de gezondheidscontrole | `revoked` (`provider_revoked`) + `purge-connection` | `revoke()` |
+| Ontkoppelen | `connections.disconnect` | `revoked` (`user_disconnected`) + `purge-connection` | `disconnectConnection()` |
+| Purge | job `purge-connection` | Nango-delete (Gmail: token intrekken), daarna `purgeConnection()` → `purged` | `processPurgeConnectionJob()` |
 
-- `auth/refresh` met `success: false` → in één transactie: `active → expired`, reden `invalid_grant`, en een kaart `connection_problem` (bestaat al; `dedupe_key = connection:<id>`, payload `{ reason }`). Tekst zonder AI: "De koppeling met je mailbox werkt niet meer. Koppel opnieuw om nieuwe mail te blijven zien." met de knop "Koppeling vernieuwen" (reconnect, §2.4).
-- **Niet blijven retryen:** `mail-ingest` en de vangnet-job slaan `expired` over. Nango zelf probeert de refresh nog periodiek; lukt dat (tijdelijke storing bij Google/Microsoft), dan stuurt Nango `refresh` met `success: true` → `expired → active` met de nieuwe reden `auth_recovered`, kaart dicht, en de vangnet-job haalt de achterstand in.
-- We maken geen onderscheid tussen een tijdelijke storing en een ingetrokken toestemming: Nango's `error.type` is niet gedocumenteerd als vaste lijst. Dus altijd `expired` (herstelbaar), nooit `revoked`. De `error.description` loggen we niet (kan provider-tekst bevatten), alleen `error.type`.
-- De bestaande route via de actiepijplijn (`auth_expired` bij uitvoeren → `expired` + kaart, #051) blijft; beide gebruiken dezelfde kaart-dedupe.
+### 5.1 Toegang verlopen
+
+- In één transactie: `active → expired`, reden `invalid_grant`, en een kaart `connection_problem` (`dedupe_key = connection:<id>`, payload `{ reason }`), titel "Koppeling met Gmail opnieuw maken". Hoe vaak het ook gemeld wordt (webhook, mislukte sync, gezondheidscontrole, actiepijplijn): één open kaart. Getest in `apps/worker/test/connections.test.ts`.
+- **Niet blijven retryen:** `mail-ingest` en de sweep slaan `expired` over. Nango probeert de refresh zelf nog; lukt dat, dan `expired → active` met reden `auth_recovered` na de accountcontrole, kaart dicht, en de ingest haalt de achterstand in vanaf de eigen cursor (records blijven 30 dagen bij Nango).
+- Altijd `expired` (herstelbaar), nooit `revoked`: Nango's `error.type` is geen vaste lijst. We loggen alleen `error.type`, nooit `error.description` (kan provider-tekst bevatten).
+- **Mislukte sync:** de job vraagt Nango meteen naar de connectie (`GET /connections/{id}`, dezelfde controle als het uurlijkse vangnet, §4.6). Zo wacht een verlopen koppeling niet tot het volgende uur, en raden we niet uit `error.type`.
+- **In de app:** de startpagina toont per verlopen koppeling een melding met de knop "Koppeling vernieuwen" (naar `/koppelingen`) tot de feed in sessie 5 de kaart zelf toont. Op `/koppelingen` staat per koppeling de status en wat de gebruiker moet doen; wie de koppeling niet maakte en geen owner is, krijgt te horen wie het wel kan.
+- De route via de actiepijplijn (`auth_expired` bij uitvoeren → `expired` + kaart, #051) gebruikt dezelfde kaart-dedupe.
+- Google in testmodus trekt tokens na 7 dagen in (§6.1): dat geeft vanzelf het pad `refresh` mislukt.
 
 ### 5.2 Verwijderd in Nango
 
@@ -446,16 +460,20 @@ stateDiagram-v2
 
 ### 5.3 Ontkoppelen
 
-Gebruiker klikt "Ontkoppelen" → `connections.disconnect` (owner, met bevestiging; procedure staat al in docs/todo.md):
+Gebruiker klikt "Ontkoppelen" en bevestigt → `connections.disconnect` (de koppelaar of een owner, #080):
 
-1. `disconnectConnection()` (bestaat): `→ revoked`, reden `user_disconnected`, audit.
-2. Job `purge-connection` (bestaat), met één nieuwe eerste stap:
-   1. **Bij Nango verwijderen:** `DELETE /connections/{id}?provider_config_key=…` (scope `connections:delete`). 404 = al weg = goed. Mislukt het, dan retryt de job en wordt er nog niets gepurged. Nango stopt meteen de syncs en verwijdert alles na 31 dagen.
+1. `disconnectConnection()`: `→ revoked`, reden `user_disconnected`, audit met de gebruiker als actor.
+2. Job `purge-connection`:
+   1. **Bij Nango verwijderen:** `DELETE /connections/{id}?provider_config_key=…` (scope `connections:delete`). 404 = al weg = goed. Mislukt het, dan retryt de job en wordt er nog niets gepurged. Nango stopt meteen de syncs.
    2. Vóór dat verwijderen draait bij Nango de event function **`pre-connection-deletion`**:
-      - **Gmail:** `POST https://oauth2.googleapis.com/revoke?token=<refresh token>` trekt de toestemming bij Google in (de gebruiker ziet de app daarna niet meer in zijn Google-account). Het token blijft binnen Nango; onze code ziet het nooit. Mislukt het intrekken, dan logt de function en gaat het verwijderen door (een gooiende cleanup-function blokkeert het verwijderen niet volgens de docs; te verifiëren in de bouw).
-      - **Outlook:** Microsoft heeft geen endpoint waarmee een app zijn eigen gedelegeerde toestemming voor één gebruiker intrekt zonder admin-rechten (`oauth2PermissionGrant` verwijderen vraagt `DelegatedPermissionGrant.ReadWrite.All`; `revokeSignInSessions` logt de gebruiker overal uit). Dat is mijn kennis van Graph, nog te verifiëren in de Microsoft-docs. Dus: tokens verdwijnen bij Nango, en de bevestiging in de app zegt "Wil je de toegang ook bij Microsoft weghalen? Ga naar myapps.microsoft.com (werk) of account.live.com/consent/Manage (persoonlijk)".
-   3. `purgeConnection()` (bestaat): events, bron-inhoud, refs, kaarten, losse entiteiten → `purged`, `account_label = null`, aantallen in de audit.
+      - **Gmail** (`nango-integrations/gmail/on-events/pre-connection-deletion.ts`): `POST https://oauth2.googleapis.com/revoke` met het refresh-token (anders het access-token) trekt de hele toestemming bij Google in. Het token blijft binnen Nango; onze code ziet het nooit. 400 (`invalid_token`: al ingetrokken of verlopen) is goed. Elke andere fout logt de function zonder token of foutbody, en het verwijderen gaat door: de function gooit nooit.
+      - **Let op bij testen:** lokaal en staging gebruiken dezelfde OAuth-app (Nango's testapp, #082). Intrekken bij Google trekt de toestemming voor die app in, dus ook die van een andere connectie op dezelfde mailbox (bijv. lokaal). Die gaat daarna op `refresh` mislukt → `expired`; opnieuw koppelen lost het op.
+      - **Outlook:** Microsoft heeft geen endpoint waarmee een app zijn eigen gedelegeerde toestemming voor één gebruiker intrekt zonder admin-rechten (`oauth2PermissionGrant` verwijderen vraagt `DelegatedPermissionGrant.ReadWrite.All`; `revokeSignInSessions` logt de gebruiker overal uit). Nog te verifiëren in de Microsoft-docs (§10 stap 5). Dus: tokens verdwijnen bij Nango, en de bevestiging in de app zegt "Wil je de toegang ook bij Microsoft weghalen? Ga naar myapps.microsoft.com (werkaccount) of account.live.com/consent/Manage (persoonlijk account)".
+   3. `purgeConnection()`: kaarten, events (cascade: `event_contents`, `event_entities`), `entity_external_refs`, documenten, `sync_cursors` en losse entiteiten → `purged`, `account_label = null`. De audit-regel bevat alleen provider, reden en aantallen.
 3. Late webhooks voor deze connectie vinden via `resolve_connection()` een `revoked`/`purged` grafsteen en doen niets.
+4. Dezelfde mailbox opnieuw koppelen: een nieuwe connectie (§2.4).
+
+Getest in `apps/worker/test/connection-lifecycle.test.ts`: na ontkoppelen staat er geen event, inhoud, koppeling, cursor of kaart van de connectie meer in de database en geen persoonsgegeven in de audit; verlopen wordt niet opgehaald en opnieuw koppelen hervat zonder dubbele events; dezelfde mailbox opnieuw koppelen botst niet met de oude.
 
 ---
 
@@ -624,5 +642,5 @@ Volgens CLAUDE.md: één integratie end-to-end voordat de volgende begint. Voors
 1. **Nango-basis:** env-schema's, Nango-client, webhook-route met verificatie en `webhook_deliveries` + `resolve_connection()` (todo uit #038), queue `nango-webhook`, retentiestap. Tests met vastgelegde webhook-bodies.
 2. **Koppelen (Gmail):** redirect `/oauth/callback` in Caddy, `connect_attempts` + `resolve_connect_attempt()`, procedures, Connect UI in web, `account-info` en `validate-connection` in nango-integrations, CI-compile en deploy naar staging.
 3. **Inlezen (Gmail):** sync `inbox-messages` met fixtures, `sync_cursors`, `mail-ingest` + vangnet, normalisatie, prune; end-to-end op staging met Daniëls mailbox.
-4. **Levenscyclus:** refresh/override/deletion, kaart "Koppeling vernieuwen", ontkoppelen met Nango-delete en `pre-connection-deletion`.
+4. **Levenscyclus:** refresh/override/deletion, kaart "Koppeling vernieuwen", ontkoppelen met Nango-delete en `pre-connection-deletion`. Gebouwd (#084, #087); de doorloop op staging staat in docs/todo.md tot hij gedaan is.
 5. **Outlook:** dezelfde stappen 2–4 voor Outlook, met eerst een fixture van het `@removed`-gedrag.

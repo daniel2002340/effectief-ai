@@ -11,11 +11,13 @@ import {
   lastSyncText,
   mailProviderList,
   type Notice,
+  nextStepText,
   noticeForError,
   noticeForOutcome,
   notices,
   providerLabels,
   receivedMailText,
+  renewLabel,
   statusText,
   waitForConnection,
 } from '@/lib/connect-flow';
@@ -212,6 +214,7 @@ function ConnectionCard({
   const [confirming, setConfirming] = useState(false);
   const manageable =
     connection.canManage && (connection.status === 'active' || connection.status === 'expired');
+  const nextStep = nextStepText(connection);
 
   return (
     <Card>
@@ -225,8 +228,14 @@ function ConnectionCard({
           · {receivedMailText(connection.receivedMailCount)}
         </CardDescription>
       </CardHeader>
+      {nextStep && !manageable ? (
+        <CardContent>
+          <p className="text-sm">{nextStep}</p>
+        </CardContent>
+      ) : null}
       {manageable ? (
         <CardContent className="flex flex-col gap-4">
+          {nextStep ? <p className="text-sm">{nextStep}</p> : null}
           {confirming ? (
             <div className="rounded-lg border p-4 text-sm">
               <p className="mb-4">{disconnectExplanation(connection.provider)}</p>
@@ -243,7 +252,7 @@ function ConnectionCard({
             <div className="flex gap-3">
               {connection.status === 'expired' ? (
                 <Button size="sm" disabled={busy} onClick={onReconnect}>
-                  Opnieuw koppelen
+                  {renewLabel}
                 </Button>
               ) : null}
               <Button
