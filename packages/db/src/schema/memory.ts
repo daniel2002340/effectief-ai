@@ -121,6 +121,8 @@ export const events = pgTable(
     type: text('type', { enum: eventTypes }).notNull(),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     threadKey: text('thread_key'),
+    /** A mail's Message-ID header, for In-Reply-To when answering; stays after retention (#086). */
+    internetMessageId: text('internet_message_id'),
     summary: text('summary'),
     summarizedAt: timestamp('summarized_at', { withTimezone: true }),
     payload: jsonb('payload').$type<EventPayload>().notNull(),

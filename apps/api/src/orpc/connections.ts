@@ -1,5 +1,6 @@
 import {
   type Connection,
+  countReceivedMailByConnection,
   createConnectAttempt,
   type Database,
   disconnectConnection,
@@ -53,13 +54,18 @@ interface CallContext {
 const canManage = (session: SessionContext, connection: Connection) =>
   session.role === 'owner' || connection.connectedByUserId === session.userId;
 
-const toSummary = (session: SessionContext, connection: Connection): ConnectionSummary => ({
+const toSummary = (
+  session: SessionContext,
+  connection: Connection,
+  receivedMailCount: number,
+): ConnectionSummary => ({
   id: connection.id,
   provider: connection.provider,
   status: connection.status,
   statusReason: connection.statusReason,
   accountLabel: connection.accountLabel,
   lastSyncedAt: connection.lastSyncedAt,
+  receivedMailCount,
   connectedAt: connection.createdAt,
   canManage: canManage(session, connection),
 });
@@ -95,8 +101,13 @@ export function connectionHandlers({
 
   return {
     async list({ session }: CallContext): Promise<ConnectionSummary[]> {
-      const rows = await withTenant(appDb, session.tenantId, (tx) => listConnections(tx));
-      return rows.filter((row) => row.status !== 'purged').map((row) => toSummary(session, row));
+      const { rows, mailCounts } = await withTenant(appDb, session.tenantId, async (tx) => ({
+        rows: await listConnections(tx),
+        mailCounts: await countReceivedMailByConnection(tx),
+      }));
+      return rows
+        .filter((row) => row.status !== 'purged')
+        .map((row) => toSummary(session, row, mailCounts.get(row.id) ?? 0));
     },
 
     /**
@@ -227,7 +238,8 @@ export function connectionHandlers({
           log.error({ err: error, tenantId, connectionId: connection.id }, 'enqueue purge failed');
         }
       }
-      return toSummary(session, connection);
+      // The mail of a disconnected connection is removed by the purge.
+      return toSummary(session, connection, 0);
     },
   };
 }

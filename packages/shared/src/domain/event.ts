@@ -75,6 +75,8 @@ const eventBase = {
   externalId: z.string().min(1).max(1000),
   occurredAt: z.date(),
   threadKey: z.string().min(1).max(1000).nullish(),
+  /** A mail's Message-ID header (RFC 5322 lines are at most 998 characters), #086. */
+  internetMessageId: z.string().min(1).max(998).nullish(),
   /** The connection it came from; null for events from the app itself. */
   connectionId: z.uuid().nullish(),
   /** For `action.executed`: the action that caused it. */

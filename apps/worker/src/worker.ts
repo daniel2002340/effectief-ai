@@ -184,7 +184,7 @@ export function startWorkers({
         case mailIngestJobNames.tenant:
           return processMailIngestTenant(job.data, { db, enqueueIngest });
         default:
-          return processMailIngestJob(job.data, info, { db, nango, log });
+          return processMailIngestJob(job.data, info, { db, nango, log, reportError });
       }
     },
     options,

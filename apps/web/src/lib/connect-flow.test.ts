@@ -7,6 +7,7 @@ import {
   noticeForError,
   noticeForOutcome,
   notices,
+  receivedMailText,
   statusText,
   waitForConnection,
 } from './connect-flow.ts';
@@ -20,6 +21,7 @@ const connection = (overrides: Partial<ConnectionSummary> = {}): ConnectionSumma
   statusReason: null,
   accountLabel: 'info@bedrijf.example',
   lastSyncedAt: null,
+  receivedMailCount: 0,
   connectedAt: new Date('2026-10-05T10:00:00Z'),
   canManage: true,
   ...overrides,
@@ -76,6 +78,12 @@ describe('notices', () => {
   it('shows "nog niet" until the first sync, then the time in Amsterdam', () => {
     expect(lastSyncText(null)).toBe('nog niet');
     expect(lastSyncText(new Date('2026-10-05T10:00:00Z'))).toContain('12:00');
+  });
+
+  it('counts the mails that came in', () => {
+    expect(receivedMailText(0)).toBe('0 mails binnengekomen');
+    expect(receivedMailText(1)).toBe('1 mail binnengekomen');
+    expect(receivedMailText(1234)).toBe('1.234 mails binnengekomen');
   });
 
   it('tells Outlook users where to withdraw the access at Microsoft', () => {

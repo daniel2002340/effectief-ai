@@ -54,6 +54,9 @@ export function cleanText(text: string): string {
     .trim();
 }
 
+/** A Message-ID: printable, no spaces, within one RFC 5322 line; anything else is dropped. */
+const MESSAGE_ID = /^[\x21-\x7e]{1,998}$/;
+
 const PROVIDER_CODE = /^[\w.:/#-]{1,128}$/;
 const MIME_TYPE = /^[\w.+-]+\/[\w.+-]+$/;
 
@@ -89,6 +92,7 @@ export function normalizeInboxMessage(
   const fromName = message.from?.name ? cleanText(message.from.name).slice(0, 320) : '';
   const subject = message.subject ? cleanText(message.subject).slice(0, 1000) : '';
   const attachments = attachmentsOf(message);
+  const internetMessageId = message.internetMessageId?.trim() ?? '';
 
   return {
     event: {
@@ -98,6 +102,7 @@ export function normalizeInboxMessage(
         externalId: message.id,
         occurredAt,
         threadKey: message.threadId.slice(0, 1000) || null,
+        internetMessageId: MESSAGE_ID.test(internetMessageId) ? internetMessageId : null,
         connectionId,
         payload: {
           attachmentCount: attachments.length,

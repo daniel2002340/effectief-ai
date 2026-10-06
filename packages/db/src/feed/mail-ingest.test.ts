@@ -44,6 +44,7 @@ function mail(connectionId: string, externalId = `m-${randomUUID()}`): MailPageI
       externalId,
       occurredAt: new Date('2026-10-06T08:00:00Z'),
       threadKey: 't1',
+      internetMessageId: '<m1@mail.example>',
       connectionId,
       payload: { attachmentCount: 0, labels: ['INBOX', 'UNREAD'], backfill: false },
     },
@@ -101,6 +102,7 @@ describe('applyMailPage', () => {
 
     await asA(async (tx) => {
       const [event] = await tx.select().from(events).where(eq(events.connectionId, connection.id));
+      expect(event?.internetMessageId).toBe('<m1@mail.example>');
       expect(event?.payload).toEqual({
         attachmentCount: 0,
         labels: ['INBOX', 'UNREAD'],
@@ -182,6 +184,50 @@ describe('applyMailPage', () => {
     expect(
       await asA((tx) => getSyncCursor(tx, { connectionId: connection.id, model: 'InboxMessage' })),
     ).toBe('c1');
+  });
+
+  it('leaves the cursor, the events and last_synced_at unchanged when saving a page fails', async () => {
+    const { connection } = await setup(A);
+    const foreign = await asB((tx) => createTestConnection(tx, B));
+    const first = mail(connection.id);
+    // The second record fails on insert (a connection of another tenant): the whole page rolls back.
+    const failing = mail(foreign.id);
+    await expect(
+      asA((tx) =>
+        applyMailPage(tx, {
+          connectionId: connection.id,
+          model: 'InboxMessage',
+          fromCursor: null,
+          toCursor: 'c1',
+          items: [first, failing],
+        }),
+      ),
+    ).rejects.toMatchObject(foreignKeyViolation);
+
+    await asA(async (tx) => {
+      expect(await getSyncCursor(tx, { connectionId: connection.id, model: 'InboxMessage' })).toBe(
+        null,
+      );
+      expect(await tx.select().from(events).where(eq(events.connectionId, connection.id))).toEqual(
+        [],
+      );
+      expect((await getConnection(tx, connection.id))?.lastSyncedAt).toBeNull();
+      const audit = await listAuditLog(tx, { objectType: 'connections', objectId: connection.id });
+      expect(audit.some((entry) => entry.action === 'mail.ingested')).toBe(false);
+    });
+
+    // The next run reads the same page again from the old cursor.
+    expect(
+      await asA((tx) =>
+        applyMailPage(tx, {
+          connectionId: connection.id,
+          model: 'InboxMessage',
+          fromCursor: null,
+          toCursor: 'c1',
+          items: [first],
+        }),
+      ),
+    ).toMatchObject({ applied: true, created: 1 });
   });
 
   it('takes in nothing for a connection that is no longer active', async () => {

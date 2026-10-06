@@ -5,6 +5,7 @@ import {
   eq,
   getConnectAttempt,
   getConnection,
+  recordEvent,
   schema,
   withTenant,
 } from '@effectief/db';
@@ -174,8 +175,50 @@ describe('list', () => {
       status: 'active',
       accountLabel: 'info@a.example',
       lastSyncedAt: null,
+      receivedMailCount: 0,
       canManage: true,
     });
+  });
+
+  it('counts only the tenant’s own received mail, per connection', async () => {
+    const ownA = await seedConnection(A);
+    const ownB = await seedConnection(B, 'info@b.example');
+    const receive = (tenant: { tenantId: string }, connectionId: string, externalId: string) =>
+      withTenant(appDatabase.db, tenant.tenantId, (tx) =>
+        recordEvent(tx, {
+          event: {
+            type: 'email.received',
+            source: 'gmail',
+            externalId,
+            occurredAt: new Date(),
+            connectionId,
+            payload: {},
+          },
+        }),
+      );
+    // The same Gmail message ID at both tenants: each counts only its own.
+    await receive(A, ownA.id, `a-1-${ownA.id}`);
+    await receive(A, ownA.id, `a-2-${ownA.id}`);
+    await receive(B, ownB.id, `a-1-${ownA.id}`);
+    await withTenant(appDatabase.db, A.tenantId, (tx) =>
+      recordEvent(tx, {
+        event: {
+          type: 'note.added',
+          source: 'app',
+          externalId: randomUUID(),
+          occurredAt: new Date(),
+          connectionId: ownA.id,
+          payload: {},
+        },
+      }),
+    );
+
+    const countOf = async (cookie: string, id: string) =>
+      (await call(cookie, 'GET', '')).json().find((row: { id: string }) => row.id === id)
+        ?.receivedMailCount;
+    expect(await countOf(A.cookie, ownA.id)).toBe(2);
+    expect(await countOf(B.cookie, ownB.id)).toBe(1);
+    expect(await countOf(B.cookie, ownA.id)).toBeUndefined();
   });
 
   it('lets a member manage only what they connected', async () => {
