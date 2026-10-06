@@ -82,6 +82,10 @@ jobs:
       - name: Unused code (knip)
         run: pnpm knip
 
+      # The functions Nango deploys after merge (decision #079); their tests run with `pnpm test`.
+      - name: Nango functions compile
+        run: pnpm --filter @effectief/nango-integrations compile
+
       # The same migration step as a deploy (#058, #059): migrations as owner, then the
       # login roles for the app and Better Auth. Tests run as these, never as the owner.
       - name: Migrations and login roles

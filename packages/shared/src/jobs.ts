@@ -12,6 +12,8 @@ export const queueNames = {
   forgetEntity: 'forget-entity',
   purgeConnection: 'purge-connection',
   nangoWebhook: 'nango-webhook',
+  connectAttempt: 'connect-attempt',
+  connectionSweep: 'connection-sweep',
   /** Only outside production: a job that fails on purpose (decision #069). */
   monitoringTest: 'monitoring-test',
 } as const;
@@ -81,6 +83,37 @@ export type NangoWebhookJob = z.infer<typeof nangoWebhookJobSchema>;
 
 /** One job per delivery: a repeated webhook adds nothing to the queue. */
 export const nangoWebhookJobId = (deliveryId: string) => `nango-webhook-${deliveryId}`;
+
+/**
+ * Turns a connect attempt into a connection, for a Nango connection found by
+ * the attempt's tag (docs/integrations.md §2.3): the same work as the
+ * creation webhook, when that webhook did not arrive.
+ */
+export const connectAttemptJobSchema = tenantJobSchema.extend({
+  attemptId: z.uuid(),
+  nangoConnectionId: z.string().regex(/^[\w.:@-]{1,200}$/),
+});
+export type ConnectAttemptJob = z.infer<typeof connectAttemptJobSchema>;
+
+export const connectAttemptJobId = (attemptId: string) => `connect-attempt-${attemptId}`;
+
+/** One purge per connection: disconnecting twice does not purge twice. */
+export const purgeConnectionJobId = (connectionId: string) => `purge-${connectionId}`;
+
+/**
+ * The safety net for missed webhooks (docs/integrations.md §4.6), as two
+ * fan-outs like retention: `attempts` every 10 minutes looks up open connect
+ * attempts at Nango; `health` every hour checks each connection at Nango.
+ * The sweeps only list tenant ids; the per-tenant jobs do the work.
+ */
+export const connectionSweepJobNames = {
+  attempts: 'attempts',
+  health: 'health',
+  tenantAttempts: 'tenant-attempts',
+  tenantHealth: 'tenant-health',
+} as const;
+export const connectionSweepJobSchema = z.strictObject({});
+export const connectionSweepTenantJobSchema = tenantJobSchema;
 
 /** Nothing but the tenant: the job fails on purpose and needs no data. */
 export const monitoringTestJobSchema = tenantJobSchema.strict();

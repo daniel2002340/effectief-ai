@@ -1,4 +1,11 @@
 export {
+  accountInfoSchema,
+  externalAccountIdOf,
+  fetchMailboxAccount,
+  type MailboxAccount,
+} from './account.ts';
+export {
+  type ConnectionRef,
   type ConnectSession,
   createNangoClient,
   NangoApiError,

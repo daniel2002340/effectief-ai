@@ -7,6 +7,10 @@ import {
   actionTypes,
   cardKinds,
   cardStatuses,
+  connectAttemptFailureCodes,
+  connectionProviders,
+  connectionStatuses,
+  connectionStatusReasons,
   entityTypes,
   eventSources,
   eventTypes,
@@ -125,6 +129,48 @@ export const entityDetailSchema = entityRefSchema.extend({
 });
 export type EntityDetail = z.infer<typeof entityDetailSchema>;
 
+/** Mailboxes connect through Nango (docs/integrations.md); the others come later. */
+export const mailProviders = ['gmail', 'outlook'] as const;
+export type MailProvider = (typeof mailProviders)[number];
+
+/**
+ * A connection as the UI shows it: never Nango's IDs or the attempt's nonce.
+ * `canManage`: the member who connected it, or an owner (#080).
+ */
+export const connectionSummarySchema = z.object({
+  id: z.uuid(),
+  provider: z.enum(connectionProviders),
+  status: z.enum(connectionStatuses),
+  statusReason: z.enum(connectionStatusReasons).nullable(),
+  accountLabel: z.string().nullable(),
+  lastSyncedAt: z.date().nullable(),
+  connectedAt: z.date(),
+  canManage: z.boolean(),
+});
+export type ConnectionSummary = z.infer<typeof connectionSummarySchema>;
+
+export const startConnectInputSchema = z.object({ provider: z.enum(mailProviders) });
+
+/** The token is for Nango's Connect UI, valid 30 minutes and for this one flow. */
+export const startConnectOutputSchema = z.object({
+  sessionToken: z.string().min(1),
+  attemptId: z.uuid(),
+});
+
+export const completeConnectInputSchema = z.object({ attemptId: z.uuid() });
+
+/** Where a connect flow stands; the UI asks again while `pending`. */
+export const completeConnectOutputSchema = z.object({
+  status: z.enum(['pending', 'connected', 'failed']),
+  failureCode: z.enum(connectAttemptFailureCodes).nullable(),
+  connectionId: z.uuid().nullable(),
+});
+export type CompleteConnectOutput = z.infer<typeof completeConnectOutputSchema>;
+
+export const connectionIdInputSchema = z.object({ connectionId: z.uuid() });
+
+export const reconnectOutputSchema = z.object({ sessionToken: z.string().min(1) });
+
 export const contract = {
   system: {
     status: oc.route({ method: 'GET', path: '/system/status' }).output(systemStatusOutputSchema),
@@ -158,6 +204,32 @@ export const contract = {
       .route({ method: 'GET', path: '/cards/{id}' })
       .input(getByIdInputSchema)
       .output(cardDetailSchema),
+  },
+  connections: {
+    /** The tenant's connections, except purged ones. */
+    list: oc
+      .route({ method: 'GET', path: '/connections' })
+      .output(z.array(connectionSummarySchema)),
+    /** Starts connecting a mailbox for the session's member: a Nango connect session. */
+    startConnect: oc
+      .route({ method: 'POST', path: '/connections/start' })
+      .input(startConnectInputSchema)
+      .output(startConnectOutputSchema),
+    /** After the Connect UI: finishes the flow if Nango's webhook did not arrive (§2.3). */
+    complete: oc
+      .route({ method: 'POST', path: '/connections/complete' })
+      .input(completeConnectInputSchema)
+      .output(completeConnectOutputSchema),
+    /** Re-authorize an active or expired connection (§2.4). */
+    reconnect: oc
+      .route({ method: 'POST', path: '/connections/reconnect' })
+      .input(connectionIdInputSchema)
+      .output(reconnectOutputSchema),
+    /** Revokes access and deletes the data that came in through it (§5.3). */
+    disconnect: oc
+      .route({ method: 'POST', path: '/connections/disconnect' })
+      .input(connectionIdInputSchema)
+      .output(connectionSummarySchema),
   },
   entities: {
     /** A contact, company or project with its timeline. */

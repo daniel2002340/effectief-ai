@@ -29,6 +29,7 @@ import {
 } from '@effectief/db/testing';
 import { AdapterError } from '@effectief/integrations';
 import {
+  createFakeNango,
   createFakeProvider,
   type FakeProvider,
   nangoTestEnv,
@@ -402,6 +403,7 @@ describe('execute-action queue (Valkey)', () => {
     db: db.app.db,
     adapters: queueFake.adapters,
     reportError: () => {},
+    nango: createFakeNango(),
     testErrors: false,
   });
 

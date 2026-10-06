@@ -2,7 +2,7 @@
 
 Ontwerp voor sessie 4: Gmail en Outlook koppelen via Nango en nieuwe mail binnenhalen tot `events` + bron-inhoud. Geen AI en geen kaarten uit mail; dat is sessie 5.
 
-**Status:** stap 1 van §10 gebouwd (Nango-basis); de rest is ontwerp. Staging gebruikt voorlopig Nango's testapps (#082). Beslissingen: #074–#083; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
+**Status:** stap 1 en 2 van §10 gebouwd (Nango-basis, koppelen van Gmail en Outlook, met de levenscyclus uit §5 behalve `pre-connection-deletion`); inlezen (stap 3) is ontwerp. Staging gebruikt voorlopig Nango's testapps (#082). Afwijkingen in de bouw: #084. Beslissingen: #074–#084; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
 
 Inhoud:
 

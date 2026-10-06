@@ -6,6 +6,7 @@ import {
   auditActions,
   auditObjectTypes,
   cardKinds,
+  connectAttemptFailureCodes,
   connectionProviders,
   connectionStatusReasons,
   playbookScopes,
@@ -55,6 +56,11 @@ const connectionPurgedMetadata = connectionMetadata.extend({
   deleted: connectionPurgeCountsSchema.optional(),
 });
 
+const connectAttemptRejectedMetadata = z.strictObject({
+  provider: z.enum(connectionProviders),
+  failureCode: z.enum(connectAttemptFailureCodes),
+});
+
 const cardMetadata = z.strictObject({ kind: z.enum(cardKinds) });
 
 const actionMetadata = z.strictObject({
@@ -100,6 +106,8 @@ export const auditMetadataSchemas = {
   'connection.revoked': connectionMetadata,
   'connection.expired': connectionMetadata,
   'connection.purged': connectionPurgedMetadata,
+  'connection.reauthorized': connectionMetadata,
+  'connect_attempt.rejected': connectAttemptRejectedMetadata,
   'card.created': cardMetadata,
   'card.reopened': cardMetadata,
   'card.snoozed': cardMetadata,

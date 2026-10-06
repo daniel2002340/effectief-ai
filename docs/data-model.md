@@ -19,7 +19,7 @@ Inhoud:
 
 Het model heeft twee delen die elkaar raken in `events` en `entities`:
 
-- **Feed en acties:** wat binnenkomt (`connections`, `webhook_deliveries`, `events`), wat de gebruiker ziet (`cards`) en wat de gebruiker goedkeurt (`actions`). Alles wat gebeurt komt in `audit_log`.
+- **Feed en acties:** wat binnenkomt (`connections`, `connect_attempts`, `webhook_deliveries`, `events`), wat de gebruiker ziet (`cards`) en wat de gebruiker goedkeurt (`actions`). Alles wat gebeurt komt in `audit_log`.
 - **Bedrijfsgeheugen**, in vier lagen:
 
 | Laag | Vraag | Tabellen |
@@ -37,6 +37,9 @@ Alle tabellen hieronder zijn tenant-tabellen: `tenant_id` → `organization.id`,
 erDiagram
     organization ||--o{ connections : heeft
     connections ||--o{ webhook_deliveries : ontvangt
+    organization ||--o{ connect_attempts : start
+    connect_attempts ||--o| connections : wordt
+    connect_attempts ||--o{ webhook_deliveries : "creation-webhook"
     connections ||--o{ events : levert
     connections ||--o{ entity_external_refs : "bron van"
 
@@ -270,8 +273,9 @@ Alle tabellen van fase 1, 2 en 3 staan er (open vraag 1, #049); de logica volgt 
 | `audit_log`: acties `entity.forgotten` en `retention.purged`, objecttypes `entities` en `event_contents` | gebouwd | 0013 |
 | `list_tenant_ids()` | gebouwd | 0014 |
 | `webhook_deliveries`, `resolve_connection()`, retentiestap `webhook_deliveries`, auditobjecttype `webhook_deliveries` | gebouwd | 0016, 0017 |
+| `connect_attempts`, `resolve_connect_attempt()`, `webhook_deliveries.connect_attempt_id`, statusredenen `auth_recovered` en `account_mismatch`, auditacties `connection.reauthorized` en `connect_attempt.rejected`, retentiestap `connect_attempts` | gebouwd | 0018, 0019 |
 
-Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/`, en de datalevenscyclus in `packages/db/src/lifecycle/` (retentie, forgetEntity, ontkoppelen en purgen; #052). API-procedures: `tenant.*`, `cards.list`, `cards.get`, `actions.approve`, `actions.reject`, `entities.get`. Nog geen extractie, leren of RAG.
+Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/`, en de datalevenscyclus in `packages/db/src/lifecycle/` (retentie, forgetEntity, ontkoppelen en purgen; #052). API-procedures: `tenant.*`, `cards.list`, `cards.get`, `actions.approve`, `actions.reject`, `entities.get`, `connections.*` (`list`, `startConnect`, `complete`, `reconnect`, `disconnect`). Nog geen extractie, leren of RAG.
 
 **Statusovergangen (#044).** `connections`, `cards` en `actions` veranderen van status alleen via `transitionConnection()`, `transitionCard()` en `transitionAction()`. Die controleren de overgang tegen de lijsten in `packages/shared/src/domain/transitions.ts`, doen `UPDATE … WHERE id = … AND status = <verwacht>` en schrijven in dezelfde transactie één regel in `audit_log`. Matcht de update geen rij, dan volgt `TransitionError` met `status_changed` (iemand anders was eerst) of `not_found`. In de database:
 
@@ -303,7 +307,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - **Datalevenscyclus (#052)**, afwijkend van of aanvullend op het ontwerp hieronder:
   - Retentie: `webhook_deliveries` gaat 30 dagen na `processed_at` weg (alleen `processed`). Inputs van acties worden geleegd 180 dagen na de laatste statuswijziging (`updated_at`) in `executed`, `rejected` of `failed`. Elke batch is een eigen transactie met een eigen audit-regel.
   - forgetEntity neemt ook entiteiten mee die in de persoon zijn samengevoegd (`merged_into_id`, recursief). De restcontrole in vrije tekst (§6.3 stap 3) is niet gebouwd (open vraag 5, docs/todo.md).
-  - Purgen van een connectie verwijdert ook kaarten (bij haar events, met een actie via haar, of `connection_problem` van haar) en documenten met `origin = 'connection'`. Een actieve connectie wordt geweigerd: eerst `disconnectConnection()` (`→ revoked`). Intrekken bij Nango is niet gebouwd.
+  - Purgen van een connectie verwijdert ook kaarten (bij haar events, met een actie via haar, of `connection_problem` van haar) en documenten met `origin = 'connection'`. Een actieve connectie wordt geweigerd: eerst `disconnectConnection()` (`→ revoked`). De job `purge-connection` verwijdert de connectie eerst bij Nango (404 = al weg) en purget pas daarna; het token bij Google intrekken (`pre-connection-deletion`) is niet gebouwd.
 - **`tenant_id` heeft een default** uit de transactie (§3.1, #043), ook als primaire sleutel van `company_profile`.
 - **Fase 3 al aangemaakt:** `documents`, `document_chunks`, `chunk_embeddings`, `document_entities` en `insights` staan er al (open vraag 1), zonder verwerkingslogica.
 - **Extra checks:**
@@ -311,7 +315,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
   - `relations`: `status <> 'confirmed' or confirmed_at is not null`.
   - `tasks`: `(status = 'done') = (completed_at is not null)`.
   - `entities`: `merged_into_id <> id`.
-  - `connections`: `status <> 'purged' or account_label is null`; `status_reason` is een gesloten lijst (`invalid_grant`, `provider_revoked`, `user_disconnected`, `reauthorized`, `data_purged`).
+  - `connections`: `status <> 'purged' or account_label is null`; `status_reason` is een gesloten lijst (`invalid_grant`, `provider_revoked`, `user_disconnected`, `reauthorized`, `data_purged`, `auth_recovered`, `account_mismatch`).
   - `cards`: `(status = 'snoozed') = (snoozed_until is not null)`; `(kind = 'connection_problem') = (connection_id is not null)`; `(kind = 'task_due') = (task_id is not null)`; `(kind = 'action_failed') = (action_id is not null)`; `priority between 0 and 3`. `cards.connection_id` en `cards.action_id` zijn `on delete cascade`.
   - `actions`: `(input_purged_at is null) = (proposed_input is not null and input is not null)`; `attempts >= 0`; `status <> 'executing' or execution_job_id is not null`; `last_error_code` is een gesloten lijst (`actionErrorCodes`).
   - `audit_log`: `(actor_type = 'user') = (actor_user_id is not null)`.
@@ -374,7 +378,8 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 
 | Kolom | Type | Betekenis | PG |
 |---|---|---|---|
-| `connection_id` | uuid not null | FK `connections` | — |
+| `connection_id` | uuid null | FK `connections`; leeg alleen bij een creation-webhook | — |
+| `connect_attempt_id` | uuid null | FK `connect_attempts`; alleen bij een creation-webhook (de connectie bestaat dan nog niet) | — |
 | `source` | text, check | `nango` · `mollie` | — |
 | `delivery_id` | text not null | Uniek ID van de bron, of sha256 van de ruwe body als de bron er geen heeft; bij Nango-auth-webhooks plus het uur van ontvangst (docs/integrations.md §4.4) | — |
 | `received_at` | timestamptz | In plaats van `created_at` (geen `updated_at`) | — |
@@ -385,9 +390,33 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 | `processed_at` | timestamptz null | | — |
 
 - **Constraints:** `unique (tenant_id, source, delivery_id)` — dubbele levering wordt `on conflict do nothing` en geeft gewoon 200. FK `(tenant_id, connection_id) → connections` (cascade). Check `(status = 'processed') = (processed_at is not null)`, `attempts >= 0`.
-- **Tenant:** via `resolve_connection(nango_integration_id, nango_connection_id)` (0017). Onbekende connectie: niet opgeslagen, alleen gelogd met ID's.
+- **Constraints (0018):** `num_nonnulls(connection_id, connect_attempt_id) = 1`; FK `(tenant_id, connect_attempt_id) → connect_attempts` (cascade).
+- **Tenant:** via `resolve_connection(nango_integration_id, nango_connection_id)` (0017), bij `auth/creation` via `resolve_connect_attempt(nonce)` (0019). Onbekende connectie of nonce: niet opgeslagen, alleen gelogd met ID's.
 - **Indexen:** `(tenant_id, status, received_at)` voor het opnieuw inplannen van blijvende `failed`.
 - **Verwijderen/retentie:** hard. `processed` na 30 dagen. `failed` blijft tot hij alsnog verwerkt is of handmatig afgesloten (een fout verdwijnt nooit stil).
+- **Fase:** 1.
+
+#### `connect_attempts`
+
+**Doel:** één poging om een mailbox te koppelen (docs/integrations.md §2.2, #075, #081). De sleutel waarmee een nieuwe Nango-connectie aan een tenant komt: tenant en lid uit de sessie, de geheime nonce als tag op de Nango-connect-session.
+
+| Kolom | Type | Betekenis | PG |
+|---|---|---|---|
+| `nonce` | text not null, uniek, check `^[0-9a-f]{64}$` | 32 willekeurige bytes; geheim, gaat alleen naar Nango, nooit naar de browser of in logs | — |
+| `provider` | text, check | `gmail` · `outlook` (lijst van `connections`) | — |
+| `nango_integration_id` | text not null | Integratie-ID in Nango | — |
+| `created_by_user_id` | uuid null | FK `member` (`set null` op de kolom) | — |
+| `expires_at` | timestamptz not null | Einde van de connect session (30 minuten) | — |
+| `consumed_at` | timestamptz null | Afgerond (gekoppeld of mislukt) | — |
+| `connection_id` | uuid null | FK `connections`: de connectie die eruit kwam | — |
+| `nango_connection_id` | text null | De Nango-connectie, ook bij mislukken (om hem daar te verwijderen) | — |
+| `failure_code` | text null, check | `duplicate_account` · `rejected` · `expired` | — |
+
+- **Constraints:** `(consumed_at is null) = (connection_id is null and failure_code is null)`; niet beide `connection_id` en `failure_code`.
+- **Tenant opzoeken:** `resolve_connect_attempt(nonce) returns (tenant_id, attempt_id, provider)`, SECURITY DEFINER, alleen ID's (0019).
+- **Verbruiken:** eenmalig, in de transactie die de connectie maakt (`consumeConnectAttempt()`, `UPDATE … WHERE consumed_at IS NULL`); de job vergrendelt de rij met `FOR UPDATE`. Ouder dan een dag wordt een open attempt niet meer gekoppeld (de sweep sluit hem met `expired` en verwijdert de Nango-connectie).
+- **Indexen:** `(tenant_id, consumed_at, created_at)` voor de sweep.
+- **Verwijderen/retentie:** hard, 30 dagen na `created_at` (retentiestap `connect_attempts`).
 - **Fase:** 1.
 
 #### `events`
@@ -445,7 +474,8 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 1. `event_contents` met `retain_until < now()`;
 2. `actions.proposed_input` en `input` van acties die langer dan 180 dagen in `executed`, `rejected` of `failed` staan (gemeten op `updated_at`; `input_purged_at` wordt gezet);
 3. `webhook_deliveries` met `status = 'processed'` en `processed_at` ouder dan 30 dagen;
-4. `cards` die langer dan 12 maanden gesloten zijn (cascade naar koppelingen).
+4. `connect_attempts` ouder dan 30 dagen (open of niet; de sweep sluit open attempts al na een dag);
+5. `cards` die langer dan 12 maanden gesloten zijn (cascade naar koppelingen).
 
 Per stap (en batch) met resultaat één audit-regel `retention.purged` met `{ step, count }`. Mislukt een batch, dan retryt de job (standaard BullMQ-opties); de selectie is idempotent.
 
@@ -794,6 +824,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | Tabel | Rechten | Append-only / onveranderlijk |
 |---|---|---|
 | `connections` | S, I, U(`status`, `status_reason`, `status_changed_at`, `last_synced_at`, `account_label`, `external_account_id`) | |
+| `connect_attempts` | S, I, U(`consumed_at`, `connection_id`, `nango_connection_id`, `failure_code`), D | uitkomst eenmalig (in code) |
 | `webhook_deliveries` | S, I, U(`status`, `attempts`, `last_error_code`, `processed_at`), D | |
 | `events` | S, I, U(`summary`, `summarized_at`), D | append-only; `summary` eenmalig (trigger) |
 | `event_contents` | S, I, D | onveranderlijk |
@@ -815,7 +846,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `insights` | S, I, U, D | herberekenbaar |
 | view `playbook_usage` | S | `security_invoker` |
 
-`auth_runtime` krijgt op geen van deze tabellen rechten. Twee `SECURITY DEFINER`-functies (eigenaar: migratierol, `search_path` vast, alleen `EXECUTE` voor `app_runtime`): `resolve_connection(nango_integration_id, nango_connection_id)` (0017) en `list_tenant_ids()` (0014). Ze geven alleen ID's terug.
+`auth_runtime` krijgt op geen van deze tabellen rechten. Drie `SECURITY DEFINER`-functies (eigenaar: migratierol, `search_path` vast, alleen `EXECUTE` voor `app_runtime`): `resolve_connection(nango_integration_id, nango_connection_id)` (0017), `resolve_connect_attempt(nonce)` (0019) en `list_tenant_ids()` (0014). Ze geven alleen ID's terug.
 
 Buiten `public`: `app_runtime` heeft `USAGE` op schema `drizzle` en alleen `SELECT` op `drizzle.__drizzle_migrations` (0015), zodat api en worker vóór de start controleren of het schema bij hun build past (#058).
 

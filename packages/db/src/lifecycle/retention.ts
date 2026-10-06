@@ -3,7 +3,13 @@ import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database } from '../client.ts';
 import { writeAudit } from '../feed/audit.ts';
-import { actions, cards, eventContents, webhookDeliveries } from '../schema/index.ts';
+import {
+  actions,
+  cards,
+  connectAttempts,
+  eventContents,
+  webhookDeliveries,
+} from '../schema/index.ts';
 import type { TenantTransaction } from '../with-tenant.ts';
 
 // Retention (decision #037, docs/data-model.md event_contents). Source content
@@ -19,6 +25,8 @@ export const retentionPeriods = {
   closedCardMonths: 12,
   /** Processed webhook deliveries this long after processing (#038). */
   webhookDeliveryDays: 30,
+  /** Connect attempts this long after they started; done or failed after a day anyway. */
+  connectAttemptDays: 30,
 } as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -30,6 +38,7 @@ const auditObjectOf = {
   action_inputs: 'actions',
   closed_cards: 'cards',
   webhook_deliveries: 'webhook_deliveries',
+  connect_attempts: 'connect_attempts',
 } as const satisfies Record<RetentionStep, string>;
 
 const batchInputSchema = z.strictObject({
@@ -48,6 +57,9 @@ export function retentionCutoff(step: RetentionStep, now: Date): Date {
   }
   if (step === 'webhook_deliveries') {
     return new Date(now.getTime() - retentionPeriods.webhookDeliveryDays * DAY_MS);
+  }
+  if (step === 'connect_attempts') {
+    return new Date(now.getTime() - retentionPeriods.connectAttemptDays * DAY_MS);
   }
   const cutoff = new Date(now);
   cutoff.setUTCMonth(cutoff.getUTCMonth() - retentionPeriods.closedCardMonths);
@@ -148,6 +160,19 @@ async function purgeStep(
         .delete(webhookDeliveries)
         .where(inArray(webhookDeliveries.id, expired))
         .returning({ id: webhookDeliveries.id });
+      return rows.length;
+    }
+    case 'connect_attempts': {
+      // Open ones too: the sweep closes an attempt after a day (§2.3).
+      const expired = tx
+        .select({ id: connectAttempts.id })
+        .from(connectAttempts)
+        .where(lt(connectAttempts.createdAt, cutoff))
+        .limit(limit);
+      const rows = await tx
+        .delete(connectAttempts)
+        .where(inArray(connectAttempts.id, expired))
+        .returning({ id: connectAttempts.id });
       return rows.length;
     }
   }

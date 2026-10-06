@@ -7,7 +7,7 @@ Alleen open punten. Afgerond = regel verwijderen. Regels voor bijhouden: zie CLA
 Handmatige acties buiten de code: accounts, app-installaties, verificaties, beslissingen.
 
 - [ ] Renovate als GitHub-app op de repo installeren (#025)
-- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072, #076–#079)
+- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072, #076–#079, #081, #083, #084)
 - [ ] Branch protection op `main`: CI-checks verplicht voor merge (#025)
 - [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047), actiestatus met `executing` in de domeinbegrippen (`concept → approved → executing → executed | failed`, #050), uitzondering op "queue-jobs bevatten de tenant" voor fan-out-jobs die alleen tenant-ID's lezen, zoals de retentie-sweep (#052), hosting en foutmonitoring in de stack (Railway voor staging, Caddy als edge, Sentry EU; #054, #055, #057), Railway-config in `.railway/` en de regel "geen host-specifieke code in de apps" (#054, #061), migraties achterwaarts compatibel met de vorige release (#058), bij Logging: wie een fout met persoonsgegevens gooit, zet die ook in een veld met een gevoelige sleutel, zodat ze uit message en stack geschrapt worden (#070), `docs/operations.md` in de structuurlijst, cloudflared bij Tooling als lokale tool (#071)
 - [ ] Railway op de subverwerkerslijst (#054)
@@ -18,11 +18,12 @@ Handmatige acties buiten de code: accounts, app-installaties, verificaties, besl
 - [ ] Moneybird- en Mollie-OAuth-apps registreren (#008)
 - [ ] Mail koppelen via Nango (sessie 4), wat nog openstaat (docs/integrations.md):
   1. Nango staging, API Keys: de "Default - Full access"-key verwijderen zodra alle keys werken (#078).
-  2. Lokale `.env`: `NANGO_ENVIRONMENT=staging`, `NANGO_SECRET_KEY` (key `local-dev` met de scopes van app-api en app-worker samen, #083), `NANGO_WEBHOOK_SIGNING_KEY`, `NANGO_WEBHOOK_URL_OVERRIDE=none` (zie `.env.example`). `docker compose` meldt nu een ongeldige regel 14 in `.env`.
-  3. Vóór de eerste pilotklant eigen OAuth-apps in plaats van Nango's testapps (#082): Google Cloud-project (Gmail API, consent screen met `gmail.readonly` + `gmail.send`, client "Web") en Entra-app ("any organizational directory and personal Microsoft accounts", `offline_access`, `User.Read`, `Mail.Read`, client secret met vervaldatum), elk met redirect-URI `https://staging.effectiefai.nl/oauth/callback`; client-ID en -secret in de integraties `gmail` en `outlook`; daarna de callback-URL in Nango (Environment Settings → Backend) op die URL zetten (§6).
-  4. Google OAuth-verificatie en CASA Tier 2 voor de productie-app starten; kan weken duren (#008, docs/integrations.md §6.1).
-  5. Microsoft Publisher Verification regelen (#008, §6.2).
-  6. Nango: regio, DPA en doorgiftegrondslag nagaan; Nango op de subverwerkerslijst (#005, #074, §3.5). Plan en kosten per connectie/sync-run nakijken bij polling elke 5 minuten (#080).
+  2. Na de eerste koppeling op staging nagaan of de testapps van Nango de scopes hebben die we nodig hebben (`gmail.readonly`, `User.Read`, `Mail.Read`): `account-info` faalt anders, en in de Nango-logs staat dan een 403 van Google of Microsoft (#082).
+  3. Lokale `.env`: `NANGO_ENVIRONMENT=staging`, `NANGO_SECRET_KEY` (key `local-dev` met de scopes van app-api en app-worker samen, #083), `NANGO_WEBHOOK_SIGNING_KEY`, `NANGO_WEBHOOK_URL_OVERRIDE=none` (zie `.env.example`). `docker compose` meldt nu een ongeldige regel 14 in `.env`.
+  4. Vóór de eerste pilotklant eigen OAuth-apps in plaats van Nango's testapps (#082): Google Cloud-project (Gmail API, consent screen met `gmail.readonly` + `gmail.send`, client "Web") en Entra-app ("any organizational directory and personal Microsoft accounts", `offline_access`, `User.Read`, `Mail.Read`, client secret met vervaldatum), elk met redirect-URI `https://staging.effectiefai.nl/oauth/callback`; client-ID en -secret in de integraties `gmail` en `outlook`; daarna de callback-URL in Nango (Environment Settings → Backend) op die URL zetten (§6).
+  5. Google OAuth-verificatie en CASA Tier 2 voor de productie-app starten; kan weken duren (#008, docs/integrations.md §6.1).
+  6. Microsoft Publisher Verification regelen (#008, §6.2).
+  7. Nango: regio, DPA en doorgiftegrondslag nagaan; Nango op de subverwerkerslijst (#005, #074, §3.5). Plan en kosten per connectie/sync-run nakijken bij polling elke 5 minuten (#080).
 - [ ] Open vragen 3 (bewaartermijnen; de retentie gebruikt nu de voorstelwaarden) en 5 (forget in vrije tekst) in docs/data-model.md §7 beantwoorden (#052)
 - [ ] 3–5 pilotklanten benaderen die Outlook of Gmail plus Moneybird gebruiken (#008)
 
@@ -38,6 +39,8 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] Twee varianten van drizzle-orm in de lockfile (met en zonder kysely-peer, via Better Auth); dedupliceren zodat de adapter dezelfde kopie gebruikt (#030)
 - [ ] Foutantwoorden van `/api/auth/*` hebben de vorm van Better Auth, niet onze `ErrorResponse` (#030, `apps/api/src/auth/routes.ts`)
 - [ ] Kolomnamen met klasse P/I uit `packages/db/src/pii.ts` toevoegen aan de redaction-sleutels in `packages/shared/src/logging.ts` (docs/data-model.md §3.7)
+- [ ] Dryrun-mocks voor `account-info` en `validate-connection` (Gmail en Outlook) na de eerste koppeling op staging, met Daniëls toestemming voor `nango dryrun --save` en geanonimiseerd; nu testen ze met een nep-`nango`-object (`packages/integrations/nango-integrations/tests/`, #084)
+- [ ] Monitor op de sweeps `connection-sweep` (Sentry Crons: alarm als de laatste geslaagde run ouder is dan 30 minuten resp. 2 uur) (docs/integrations.md §4.6)
 - [ ] Nango-webhookfixtures zijn nog de voorbeelden uit de Nango-docs; na de eerste koppeling op staging echte bodies vastleggen (logs_get_operation), anonimiseren en vervangen; daarbij nagaan in welke vorm `environment` binnenkomt (`packages/integrations/src/nango/fixtures.ts`)
 - [ ] Webhook-deliveries die `received` of `failed` blijven (queue onbereikbaar na opslaan, of alle retries op) opnieuw inplannen vanuit de sweep (#038, docs/integrations.md §4.6, `apps/api/src/routes/webhooks.ts`)
 - [ ] `proposeAction()` en `addEntityExternalRef()` gooien een gewone `Error` bij een onbekende of ongeschikte connectie; een getypte fout maken zodat de API die naar `NOT_FOUND`/`CONFLICT` vertaalt (`packages/db/src/feed/`)
@@ -47,8 +50,8 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] Echte adapters voor Moneybird, Gmail, Outlook en Mollie in `packages/integrations/<provider>/`, elk idempotent op de key; tot dan faalt een goedgekeurde actie als `unsupported` (#051, `apps/worker/src/main.ts`)
 - [ ] API-procedure voor bewerken na uitvoeren of na een fout (`reopenAction()` bestaat in `packages/db/src/feed/actions.ts`) (#051)
 - [ ] BullMQ bewaart de foutmelding van een mislukte job (`failedReason`) in Valkey; bij een onbekende fout kan daar tekst met persoonsgegevens in staan. Melding vervangen door een code (`apps/worker/src/jobs/execute-action.ts`)
-- [ ] Procedures die de lifecycle-jobs starten: `entities.forget` (alleen `owner`, met bevestiging) en `connections.disconnect` (`disconnectConnection()` + job `purge-connection`) (#052, `apps/worker/src/jobs/`)
-- [ ] Bij ontkoppelen ook de toegang bij Nango intrekken (connectie verwijderen via de Nango-API) en bij Google het token intrekken (`pre-connection-deletion`); vereist een Nango-client (#052, #077, docs/integrations.md §5.3)
+- [ ] Procedure die de lifecycle-job start: `entities.forget` (alleen `owner`, met bevestiging) (#052, `apps/worker/src/jobs/`)
+- [ ] Bij ontkoppelen ook het token bij Google intrekken: event function `pre-connection-deletion` in `nango-integrations/gmail`; verwijderen bij Nango is gebouwd (#077, #084, docs/integrations.md §5.3, §10 stap 4)
 - [ ] Restcontrole na forgetEntity: overgebleven vrije tekst (feiten, playbooks, samenvattingen, kaarttitels, document-chunks) doorzoeken op naam en identifiers en een kaart voor de owner maken; wacht op open vraag 5 (docs/data-model.md §6.3 stap 3)
 - [ ] `replaceFact()` en `createPlaybookVersion()` gooien `KnowledgeError`; bij de eerste API-procedures vertalen naar `NOT_FOUND`/`CONFLICT`, net als `TransitionError` (`packages/db/src/knowledge/`)
 

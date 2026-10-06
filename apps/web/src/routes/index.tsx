@@ -1,5 +1,5 @@
 import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
 import { authClient } from '@/lib/auth-client';
@@ -28,9 +28,14 @@ function HomePage() {
         title="Vandaag"
         description={tenant.name}
         actions={
-          <Button variant="outline" size="sm" onClick={signOut}>
-            Uitloggen
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/koppelingen">Koppelingen</Link>
+            </Button>
+            <Button variant="outline" size="sm" onClick={signOut}>
+              Uitloggen
+            </Button>
+          </div>
         }
       />
       <section className="rounded-lg border p-4 text-sm">

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createDatabase, sql } from '@effectief/db';
+import { createNangoClient } from '@effectief/integrations/nango';
 import { nangoTestEnv } from '@effectief/integrations/testing';
 import { parseEnv } from '@effectief/shared';
 import type { FastifyInstance } from 'fastify';
@@ -29,8 +30,26 @@ export const enqueuedMonitoringTests: { tenantId: string }[] = [];
 /** Nango webhook jobs the API enqueued, newest last; tests read and clear it. */
 export const enqueuedNangoWebhooks: { tenantId: string; deliveryId: string }[] = [];
 
+/** Connect-attempt jobs the API enqueued, newest last. */
+export const enqueuedConnectAttempts: {
+  tenantId: string;
+  attemptId: string;
+  nangoConnectionId: string;
+}[] = [];
+
+/** Purge jobs the API enqueued, newest last. */
+export const enqueuedPurges: { tenantId: string; connectionId: string }[] = [];
+
 /** Execute jobs the API enqueued, newest last; tests read and clear it. */
 export const enqueuedExecutions: { tenantId: string; actionId: string; approvedAt: Date }[] = [];
+
+/** A Nango client that fails every call, as if Nango were down. */
+const unreachableNango = createNangoClient({
+  secretKey: 'test-key-not-a-real-one',
+  fetch: async () => {
+    throw new TypeError('no network in tests');
+  },
+});
 
 export type TestAppOptions = Partial<Omit<AppDependencies, 'env'>> & {
   env?: Partial<ApiEnv>;
@@ -54,6 +73,14 @@ export async function createTestApp(
     enqueueNangoWebhook: async (job) => {
       enqueuedNangoWebhooks.push(job);
     },
+    enqueueConnectAttempt: async (job) => {
+      enqueuedConnectAttempts.push(job);
+    },
+    enqueuePurgeConnection: async (job) => {
+      enqueuedPurges.push(job);
+    },
+    // Never the real Nango: a test that needs it passes its own fake.
+    nango: unreachableNango,
     enqueueMonitoringTest: async (job) => {
       enqueuedMonitoringTests.push(job);
     },

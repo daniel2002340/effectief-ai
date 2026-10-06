@@ -15,7 +15,7 @@ import {
   openTestDatabases,
   type TestTenant,
 } from '@effectief/db/testing';
-import { nangoTestEnv } from '@effectief/integrations/testing';
+import { createFakeNango, nangoTestEnv } from '@effectief/integrations/testing';
 import {
   defaultJobOptions,
   parseEnv,
@@ -37,6 +37,8 @@ import { startWorkers } from '../src/worker.ts';
 // Retention, forgetting and purging as jobs, through Valkey with an own key
 // prefix, against Postgres as app_runtime.
 
+/** Nango connections the purge job removed, in order. */
+const deletedAtNango: string[] = [];
 const env = parseEnv(workerEnvSchema, { ...process.env, ...nangoTestEnv, LOG_LEVEL: 'silent' });
 const log = pino({ level: 'silent' });
 const db = openTestDatabases();
@@ -49,6 +51,12 @@ const workers = startWorkers({
   db: db.app.db,
   adapters: {},
   reportError: () => {},
+  nango: createFakeNango({
+    deleteConnection: async (ref) => {
+      deletedAtNango.push(ref.connectionId);
+      return { deleted: true };
+    },
+  }),
   testErrors: false,
 });
 const queues = {
@@ -166,6 +174,8 @@ describe('purge-connection', () => {
       purged: true,
     });
     expect((await inTenant((tx) => getConnection(tx, created.id)))?.status).toBe('purged');
+    // Removed at Nango first (docs/integrations.md §5.3).
+    expect(deletedAtNango).toContain(created.nangoConnectionId);
   });
 
   it('an active connection fails the job at once, without retries', async () => {
@@ -178,5 +188,6 @@ describe('purge-connection', () => {
     const failed = await queues.purge.getJob(job.id ?? '');
     expect(failed?.attemptsMade).toBe(1);
     expect((await inTenant((tx) => getConnection(tx, active.id)))?.status).toBe('active');
+    expect(deletedAtNango).not.toContain(active.nangoConnectionId);
   });
 });

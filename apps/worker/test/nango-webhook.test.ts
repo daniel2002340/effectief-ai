@@ -7,7 +7,7 @@ import {
   withTenant,
 } from '@effectief/db';
 import { createTestConnection, openTestDatabases, type TestTenant } from '@effectief/db/testing';
-import { nangoTestEnv } from '@effectief/integrations/testing';
+import { createFakeNango, nangoTestEnv } from '@effectief/integrations/testing';
 import {
   defaultJobOptions,
   nangoWebhookJobId,
@@ -87,14 +87,20 @@ describe('processNangoWebhookJob', () => {
   it('rolls the effects back on failure, marks the delivery failed and rethrows', async () => {
     const delivery = await storeDelivery();
     const handlers = {
-      sync: async (tx: TenantTransaction) => {
-        await tx.insert(schema.webhookDeliveries).values({
-          connectionId: connectionA.id,
-          source: 'nango',
-          deliveryId: `effect-${delivery.id}`,
-          payload: payload(),
+      sync: async ({
+        commit,
+      }: {
+        commit: <T>(fn: (tx: TenantTransaction) => Promise<T>) => Promise<T>;
+      }) => {
+        await commit(async (tx) => {
+          await tx.insert(schema.webhookDeliveries).values({
+            connectionId: connectionA.id,
+            source: 'nango',
+            deliveryId: `effect-${delivery.id}`,
+            payload: payload(),
+          });
+          throw new Error('provider down');
         });
-        throw new Error('provider down');
       },
     };
     await expect(
@@ -145,6 +151,7 @@ describe('through the queue', () => {
       db: db.app.db,
       adapters: {},
       reportError: () => {},
+      nango: createFakeNango(),
       testErrors: false,
     });
     const queue = new Queue(queueNames.nangoWebhook, { connection, prefix, defaultJobOptions });

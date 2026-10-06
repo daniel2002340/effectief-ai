@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Database } from '@effectief/db';
+import { createNangoClient, type NangoClient } from '@effectief/integrations/nango';
 import { type ReportError, testErrorsEnabled } from '@effectief/shared';
 import helmet from '@fastify/helmet';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -9,6 +10,7 @@ import { authRoutes } from './auth/routes.ts';
 import type { ApiEnv } from './env.ts';
 import { loggerOptions } from './logger.ts';
 import type { EnqueueExecuteAction } from './orpc/actions.ts';
+import type { EnqueueConnectAttempt, EnqueuePurgeConnection } from './orpc/connections.ts';
 import { orpcRoutes } from './orpc/plugin.ts';
 import { createRouter } from './orpc/router.ts';
 import type { EnqueueMonitoringTest } from './orpc/test-errors.ts';
@@ -33,6 +35,12 @@ export interface AppDependencies {
   enqueueExecuteAction: EnqueueExecuteAction;
   /** Puts a stored Nango webhook delivery on its queue (BullMQ in main.ts). */
   enqueueNangoWebhook: EnqueueNangoWebhook;
+  /** Finishes a connect attempt found at Nango by its tag (connections.complete). */
+  enqueueConnectAttempt: EnqueueConnectAttempt;
+  /** Purges a disconnected connection (connections.disconnect). */
+  enqueuePurgeConnection: EnqueuePurgeConnection;
+  /** Nango with the api's key; tests pass a fake. */
+  nango?: NangoClient;
   /** Puts a failing test job on its queue; only used outside production (decision #069). */
   enqueueMonitoringTest: EnqueueMonitoringTest;
   /** Sends unexpected (5xx) errors to monitoring; IDs only. */
@@ -54,6 +62,9 @@ export async function buildApp({
   databases,
   enqueueExecuteAction,
   enqueueNangoWebhook,
+  enqueueConnectAttempt,
+  enqueuePurgeConnection,
+  nango = createNangoClient({ secretKey: env.NANGO_SECRET_KEY }),
   enqueueMonitoringTest,
   reportError,
   rateLimitMax = 300,
@@ -82,6 +93,12 @@ export async function buildApp({
     appDb: databases.app,
     resolveSession: (headers) => resolveSession(auth, databases.auth, headers),
     enqueueExecuteAction,
+    connections: {
+      nango,
+      webhookUrlOverride: env.NANGO_WEBHOOK_URL_OVERRIDE,
+      enqueueConnectAttempt,
+      enqueuePurgeConnection,
+    },
     enqueueMonitoringTest: testErrorsEnabled(env.SENTRY_ENVIRONMENT)
       ? enqueueMonitoringTest
       : undefined,

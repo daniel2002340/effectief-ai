@@ -60,8 +60,20 @@ export const connectionStatusReasons = [
   'user_disconnected',
   'reauthorized',
   'data_purged',
+  /** A refresh failed earlier and works again (Nango's recovery webhook). */
+  'auth_recovered',
+  /** After re-authorizing, the provider account is not the one connected first. */
+  'account_mismatch',
 ] as const;
 export type ConnectionStatusReason = (typeof connectionStatusReasons)[number];
+
+/**
+ * Why a connect attempt did not become a connection (docs/integrations.md §2):
+ * the mailbox is already connected in this tenant, a check failed (tags,
+ * integration, membership), or it was not completed within a day.
+ */
+export const connectAttemptFailureCodes = ['duplicate_account', 'rejected', 'expired'] as const;
+export type ConnectAttemptFailureCode = (typeof connectAttemptFailureCodes)[number];
 
 export const cardKinds = [
   'email_reply',
@@ -135,6 +147,7 @@ export const auditObjectTypes = [
   'entities',
   'event_contents',
   'webhook_deliveries',
+  'connect_attempts',
 ] as const;
 export type AuditObjectType = (typeof auditObjectTypes)[number];
 
@@ -144,6 +157,9 @@ export const auditActions = [
   'connection.revoked',
   'connection.expired',
   'connection.purged',
+  /** Re-authorized while still active: same account, no status change. */
+  'connection.reauthorized',
+  'connect_attempt.rejected',
   'card.created',
   'card.reopened',
   'card.snoozed',
@@ -178,6 +194,7 @@ export const retentionSteps = [
   'action_inputs',
   'closed_cards',
   'webhook_deliveries',
+  'connect_attempts',
 ] as const;
 export type RetentionStep = (typeof retentionSteps)[number];
 

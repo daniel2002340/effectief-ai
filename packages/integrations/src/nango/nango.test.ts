@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   isHandledNangoWebhook,
   nangoWebhookSchema,
@@ -6,6 +7,7 @@ import {
 } from '@effectief/shared';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { externalAccountIdOf } from './account.ts';
 import { createNangoClient, NangoApiError } from './client.ts';
 import { nangoDeliveryId } from './delivery.ts';
 import { nangoEnvSchema, requireNangoEnvironment } from './env.ts';
@@ -309,5 +311,14 @@ describe('Nango client', () => {
       action_name: 'account-info',
       input: {},
     });
+  });
+});
+
+describe('externalAccountIdOf', () => {
+  it('is the hash the validate-connection functions lock in Nango metadata', () => {
+    // nango-integrations/<provider>/on-events/validate-connection.ts uses the same formula.
+    const expected = createHash('sha256').update('gmail:info@bedrijf.example').digest('hex');
+    expect(externalAccountIdOf('gmail', ' Info@Bedrijf.example ')).toBe(expected);
+    expect(externalAccountIdOf('outlook', 'abc')).not.toBe(externalAccountIdOf('gmail', 'abc'));
   });
 });

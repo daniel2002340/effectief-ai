@@ -93,6 +93,15 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Before the app: the worker calls these functions (docs/integrations.md §7.5).
+      # The key may only deploy (environment:deploy). No --allow-destructive: a
+      # deploy that would remove a function fails, as Railway does (#064).
+      - name: Deploy Nango functions
+        working-directory: packages/integrations/nango-integrations
+        env:
+          NANGO_SECRET_KEY_STAGING: ${{ secrets.NANGO_SECRET_KEY_STAGING }}
+        run: pnpm exec nango deploy staging --no-dependency-update
+
       - name: Install Railway CLI
         run: npm install --global @railway/cli@5.63.1
 

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as InloggenRouteImport } from './routes/inloggen'
+import { Route as KoppelingenRouteImport } from './routes/koppelingen'
 import { Route as RegistrerenRouteImport } from './routes/registreren'
 import { Route as TestfoutRouteImport } from './routes/testfout'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const InloggenRoute = InloggenRouteImport.update({
   id: '/inloggen',
   path: '/inloggen',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KoppelingenRoute = KoppelingenRouteImport.update({
+  id: '/koppelingen',
+  path: '/koppelingen',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RegistrerenRoute = RegistrerenRouteImport.update({
@@ -38,12 +44,14 @@ const TestfoutRoute = TestfoutRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/inloggen': typeof InloggenRoute
+  '/koppelingen': typeof KoppelingenRoute
   '/registreren': typeof RegistrerenRoute
   '/testfout': typeof TestfoutRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/inloggen': typeof InloggenRoute
+  '/koppelingen': typeof KoppelingenRoute
   '/registreren': typeof RegistrerenRoute
   '/testfout': typeof TestfoutRoute
 }
@@ -51,20 +59,28 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/inloggen': typeof InloggenRoute
+  '/koppelingen': typeof KoppelingenRoute
   '/registreren': typeof RegistrerenRoute
   '/testfout': typeof TestfoutRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/inloggen' | '/registreren' | '/testfout'
+  fullPaths: '/' | '/inloggen' | '/koppelingen' | '/registreren' | '/testfout'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/inloggen' | '/registreren' | '/testfout'
-  id: '__root__' | '/' | '/inloggen' | '/registreren' | '/testfout'
+  to: '/' | '/inloggen' | '/koppelingen' | '/registreren' | '/testfout'
+  id:
+    | '__root__'
+    | '/'
+    | '/inloggen'
+    | '/koppelingen'
+    | '/registreren'
+    | '/testfout'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   InloggenRoute: typeof InloggenRoute
+  KoppelingenRoute: typeof KoppelingenRoute
   RegistrerenRoute: typeof RegistrerenRoute
   TestfoutRoute: typeof TestfoutRoute
 }
@@ -83,6 +99,13 @@ declare module '@tanstack/react-router' {
       path: '/inloggen'
       fullPath: '/inloggen'
       preLoaderRoute: typeof InloggenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/koppelingen': {
+      id: '/koppelingen'
+      path: '/koppelingen'
+      fullPath: '/koppelingen'
+      preLoaderRoute: typeof KoppelingenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/registreren': {
@@ -105,6 +128,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InloggenRoute: InloggenRoute,
+  KoppelingenRoute: KoppelingenRoute,
   RegistrerenRoute: RegistrerenRoute,
   TestfoutRoute: TestfoutRoute,
 }

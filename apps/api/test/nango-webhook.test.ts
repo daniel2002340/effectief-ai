@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { createConnection, schema, sql, withTenant } from '@effectief/db';
+import { createConnectAttempt, createConnection, schema, sql, withTenant } from '@effectief/db';
 import { signNangoBody } from '@effectief/integrations/nango';
 import { nangoWebhookFixtures as fixtures } from '@effectief/integrations/testing';
 import type { FastifyInstance } from 'fastify';
@@ -178,7 +178,7 @@ describe('tenant lookup', () => {
     expect(line).toMatchObject({ level: 30, nangoConnectionId: unknown, integrationId: 'gmail' });
   });
 
-  it('ignores a creation webhook until connect attempts exist, even with tags of a tenant', async () => {
+  it('ignores a creation webhook without a connect attempt tag, even with tags of a tenant', async () => {
     const before = await allDeliveryCount();
     const response = await signed({
       ...fixtures.authCreation,
@@ -187,6 +187,48 @@ describe('tenant lookup', () => {
     });
     expect(response.json()).toEqual({ received: false });
     expect(await allDeliveryCount()).toBe(before);
+  });
+
+  it('ignores a creation webhook with an unknown nonce (another environment, the dashboard)', async () => {
+    const before = await allDeliveryCount();
+    const response = await signed({
+      ...fixtures.authCreation,
+      connectionId: randomUUID(),
+      tags: { ...fixtures.authCreation.tags, connect_attempt: 'c'.repeat(64) },
+    });
+    expect(response.json()).toEqual({ received: false });
+    expect(await allDeliveryCount()).toBe(before);
+    expect(logs.some((line) => line.msg === 'nango webhook: unknown connection, ignored')).toBe(
+      true,
+    );
+  });
+
+  it('stores a creation webhook for the tenant of the attempt, whatever its other tags say', async () => {
+    const attempt = await withTenant(appDatabase.db, tenantA.tenantId, (tx) =>
+      createConnectAttempt(tx, {
+        provider: 'gmail',
+        nangoIntegrationId: 'gmail',
+        createdByUserId: tenantA.userId,
+      }),
+    );
+    const response = await signed({
+      ...fixtures.authCreation,
+      connectionId: randomUUID(),
+      // Tags of tenant B with the nonce of tenant A: the tenant comes from the attempt.
+      tags: {
+        organization_id: tenantB.tenantId,
+        end_user_id: tenantB.userId,
+        connect_attempt: attempt.nonce,
+      },
+    });
+    expect(response.json()).toEqual({ received: true });
+    expect(enqueuedNangoWebhooks.map((job) => job.tenantId)).toEqual([tenantA.tenantId]);
+    const stored = (await deliveriesOf(tenantA.tenantId)).find(
+      (delivery) => delivery.id === enqueuedNangoWebhooks[0]?.deliveryId,
+    );
+    expect(stored).toMatchObject({ connectAttemptId: attempt.id, connectionId: null });
+    expect(JSON.stringify(stored?.payload)).not.toContain(attempt.nonce);
+    expect((await deliveriesOf(tenantB.tenantId)).map((d) => d.id)).not.toContain(stored?.id);
   });
 
   it('stores the delivery for the tenant of the connection only, and enqueues one job', async () => {

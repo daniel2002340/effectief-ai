@@ -127,6 +127,20 @@
       "when": 1791216147645,
       "tag": "0017_webhook_deliveries_rls_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791216718144,
+      "tag": "0018_connect_attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791216718747,
+      "tag": "0019_connect_attempts_rls_grants",
+      "breakpoints": true
     }
   ]
 }

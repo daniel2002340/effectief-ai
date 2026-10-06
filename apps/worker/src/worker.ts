@@ -1,7 +1,10 @@
 import type { Database } from '@effectief/db';
 import type { AdapterRegistry } from '@effectief/integrations';
+import type { NangoClient } from '@effectief/integrations/nango';
 import {
+  connectionSweepJobNames,
   defaultJobOptions,
+  purgeConnectionJobId,
   queueNames,
   type ReportError,
   retentionJobNames,
@@ -9,6 +12,13 @@ import {
 } from '@effectief/shared';
 import { type ConnectionOptions, Queue, Worker } from 'bullmq';
 import type { Logger } from 'pino';
+import { handleAuthWebhook, type LifecycleDependencies } from './connections/lifecycle.ts';
+import {
+  processConnectAttemptJob,
+  processConnectionSweep,
+  processTenantAttempts,
+  processTenantHealth,
+} from './jobs/connections.ts';
 import { processExampleJob } from './jobs/example.ts';
 import { processExecuteActionJob } from './jobs/execute-action.ts';
 import { processForgetEntityJob } from './jobs/forget-entity.ts';
@@ -24,6 +34,8 @@ export interface StartWorkersOptions {
   db: Database;
   /** Provider adapters for executing actions; tests pass a fake provider. */
   adapters: AdapterRegistry;
+  /** Nango with the worker's key; tests pass a fake. */
+  nango: NangoClient;
   /** Key prefix in Valkey; tests use their own to stay isolated. */
   prefix?: string;
   /** Sends jobs that failed for good to monitoring; IDs only (decision #055). */
@@ -36,6 +48,8 @@ export interface StartedWorkers {
   workers: Worker[];
   /** The retention queue, which the sweep adds per-tenant jobs to. */
   retentionQueue: Queue;
+  /** The queue of the connection sweeps (attempts, health). */
+  connectionSweepQueue: Queue;
   /** Waits for running jobs, then closes workers and queues. */
   close: () => Promise<void>;
 }
@@ -45,6 +59,7 @@ export function startWorkers({
   log,
   db,
   adapters,
+  nango,
   prefix,
   reportError,
   testErrors,
@@ -107,15 +122,96 @@ export function startWorkers({
   );
   const purgeConnection = new Worker(
     queueNames.purgeConnection,
-    (job) => processPurgeConnectionJob(job.data, { jobId: jobIdOf(job) }, { db, log }),
+    (job) => processPurgeConnectionJob(job.data, { jobId: jobIdOf(job) }, { db, log, nango }),
     { ...options, concurrency: 1 },
   );
+  const purgeQueue = new Queue(queueNames.purgeConnection, {
+    connection,
+    defaultJobOptions,
+    ...prefixOption,
+  });
+  const lifecycle: LifecycleDependencies = {
+    db,
+    nango,
+    log,
+    enqueuePurge: async (job) => {
+      await purgeQueue.add('purge', job, { jobId: purgeConnectionJobId(job.connectionId) });
+    },
+  };
   const nangoWebhook = new Worker(
     queueNames.nangoWebhook,
-    (job) => processNangoWebhookJob(job.data, { jobId: jobIdOf(job) }, { db, log }),
+    (job) =>
+      processNangoWebhookJob(
+        job.data,
+        { jobId: jobIdOf(job) },
+        {
+          db,
+          log,
+          handlers: {
+            auth: ({ tenantId, delivery, payload, jobId, commit }) =>
+              payload.type === 'auth'
+                ? handleAuthWebhook(lifecycle, {
+                    tenantId,
+                    connectionId: delivery.connectionId,
+                    connectAttemptId: delivery.connectAttemptId,
+                    payload,
+                    jobId,
+                    commit,
+                  })
+                : Promise.resolve(),
+          },
+        },
+      ),
     options,
   );
-  const workers = [example, executeAction, retention, forgetEntity, purgeConnection, nangoWebhook];
+  const connectAttempt = new Worker(
+    queueNames.connectAttempt,
+    (job) => processConnectAttemptJob(job.data, { jobId: jobIdOf(job) }, lifecycle),
+    options,
+  );
+  const connectionSweepQueue = new Queue(queueNames.connectionSweep, {
+    connection,
+    defaultJobOptions,
+    ...prefixOption,
+  });
+  const connectionSweep = new Worker(
+    queueNames.connectionSweep,
+    (job) => {
+      const info = { jobId: jobIdOf(job) };
+      switch (job.name) {
+        case connectionSweepJobNames.tenantAttempts:
+          return processTenantAttempts(job.data, info, lifecycle);
+        case connectionSweepJobNames.tenantHealth:
+          return processTenantHealth(job.data, info, lifecycle);
+        default:
+          return processConnectionSweep(job.name, job.data, {
+            db,
+            enqueueTenants: async (jobs) => {
+              // One per tenant per sweep run; the run's own id keeps them apart.
+              await connectionSweepQueue.addBulk(
+                jobs.map(({ name, tenantId }) => ({
+                  name,
+                  data: { tenantId },
+                  opts: { jobId: `${name}-${tenantId}-${info.jobId}` },
+                })),
+              );
+            },
+          });
+      }
+    },
+    // One at a time: each run calls Nango per attempt or connection (rate limits, §4.3).
+    { ...options, concurrency: 1 },
+  );
+  const workers = [
+    example,
+    executeAction,
+    retention,
+    forgetEntity,
+    purgeConnection,
+    nangoWebhook,
+    connectAttempt,
+    connectionSweep,
+  ];
   if (testErrors) {
     workers.push(
       new Worker(
@@ -146,10 +242,11 @@ export function startWorkers({
   return {
     workers,
     retentionQueue,
+    connectionSweepQueue,
     close: async () => {
       // close() waits for running jobs to finish.
       await Promise.all(workers.map((worker) => worker.close()));
-      await retentionQueue.close();
+      await Promise.all([retentionQueue.close(), purgeQueue.close(), connectionSweepQueue.close()]);
     },
   };
 }

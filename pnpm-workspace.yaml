@@ -1,6 +1,8 @@
 packages:
   - apps/*
   - packages/*
+  # Nango functions (decision #079); compiled and deployed by the Nango CLI.
+  - packages/integrations/nango-integrations
 
 # Eén versie van React en TypeScript in de hele workspace (zie docs/decisions.md #012).
 catalog:
