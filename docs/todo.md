@@ -7,7 +7,7 @@ Alleen open punten. Afgerond = regel verwijderen. Regels voor bijhouden: zie CLA
 Handmatige acties buiten de code: accounts, app-installaties, verificaties, beslissingen.
 
 - [ ] Renovate als GitHub-app op de repo installeren (#025)
-- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072, #076–#079, #081, #083–#085)
+- [ ] Beslissingen met status `voorgesteld` in docs/decisions.md doorlopen (#003–#008, #013, #033–#040, #043–#046, #048, #051, #052, #057, #059, #061–#064, #066–#068, #071, #072, #076–#079, #081, #083–#085, #087)
 - [ ] Branch protection op `main`: CI-checks verplicht voor merge (#025)
 - [ ] Voorstel CLAUDE.md-wijzigingen beoordelen: TypeScript 6 (#015), type stripping in dev (#016), webhooks alleen via `registerWebhookRoutes()` (#020), bundel + `scripts/deploy-app.sh` (#028), Better Auth in de stack en drie database-URL's (#030, #031), JSON-only voor wijzigingen (#032), webhooks opslaan als `webhook_delivery` in plaats van `event` (#038), connection-status ook `expired → active` bij opnieuw autoriseren (#044), embeddings via Cohere Embed 5 in plaats van Bedrock (#047), actiestatus met `executing` in de domeinbegrippen (`concept → approved → executing → executed | failed`, #050), uitzondering op "queue-jobs bevatten de tenant" voor fan-out-jobs die alleen tenant-ID's lezen, zoals de retentie-sweep (#052), hosting en foutmonitoring in de stack (Railway voor staging, Caddy als edge, Sentry EU; #054, #055, #057), Railway-config in `.railway/` en de regel "geen host-specifieke code in de apps" (#054, #061), migraties achterwaarts compatibel met de vorige release (#058), bij Logging: wie een fout met persoonsgegevens gooit, zet die ook in een veld met een gevoelige sleutel, zodat ze uit message en stack geschrapt worden (#070), `docs/operations.md` in de structuurlijst, cloudflared bij Tooling als lokale tool (#071)
 - [ ] Railway op de subverwerkerslijst (#054)
@@ -24,6 +24,7 @@ Handmatige acties buiten de code: accounts, app-installaties, verificaties, besl
   5. Google OAuth-verificatie en CASA Tier 2 voor de productie-app starten; kan weken duren (#008, docs/integrations.md §6.1).
   6. Microsoft Publisher Verification regelen (#008, §6.2).
   7. Nango: regio, DPA en doorgiftegrondslag nagaan; Nango op de subverwerkerslijst (#005, #074, §3.5). Plan en kosten per connectie/sync-run nakijken bij polling elke 5 minuten (#080).
+- [ ] Na merge van de levenscyclus-PR: doorloop op staging samen met Claude (koppelen → mail sturen → event → ontkoppelen → alles weg; count-query's in de database, Nango alleen lezen). Daarna lokaal opnieuw koppelen: het intrekken bij Google treft ook de lokale connectie op dezelfde mailbox (#087, docs/integrations.md §5.3)
 - [ ] Open vragen 3 (bewaartermijnen; de retentie gebruikt nu de voorstelwaarden) en 5 (forget in vrije tekst) in docs/data-model.md §7 beantwoorden (#052)
 - [ ] 3–5 pilotklanten benaderen die Outlook of Gmail plus Moneybird gebruiken (#008)
 
@@ -43,7 +44,7 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] Monitor op de sweeps `connection-sweep` en `mail-ingest` (Sentry Crons: alarm als de laatste geslaagde run ouder is dan 30 minuten, resp. 2 uur voor de gezondheidscontrole) (docs/integrations.md §4.3, §4.6)
 - [ ] Gmail-fixture met een echte mail in Promoties of Sociaal (history: binnengekomen of verplaatst naar dat tabblad); nu alleen getest met handgemaakte data. Op staging kwam er geen langs (`packages/integrations/nango-integrations/tests/`, README)
 - [ ] Quotes en handtekeningen uit `event_contents.body_text` halen, met fixtures van echte (geanonimiseerde) draden; nu staat de hele tekst erin (#085, `packages/integrations/src/mail/normalize.ts`, docs/data-model.md `event_contents`)
-- [ ] Nango-webhookfixtures voor `override`, `refresh` en `sync` zijn nog de voorbeelden uit de Nango-docs (`creation` en `deletion` zijn echt); zodra staging ze verstuurd heeft, de bodies uit de logs vastleggen (logs_get_operation), anonimiseren en vervangen (`packages/integrations/src/nango/fixtures.ts`)
+- [ ] Nango-webhookfixtures voor `override`, `refresh` en een mislukte `sync` zijn nog de voorbeelden uit de Nango-docs (`creation`, `deletion` en een geslaagde `sync` zijn echt). Google in testmodus trekt tokens na 7 dagen in, dus rond 13 oktober komt er een echte `refresh`-fout; de bodies dan uit de logs halen (logs_get_operation, logs blijven maar een dag), anonimiseren en vervangen (`packages/integrations/src/nango/fixtures.ts`)
 - [ ] Webhook-deliveries die `received` of `failed` blijven (queue onbereikbaar na opslaan, of alle retries op) opnieuw inplannen vanuit de sweep (#038, docs/integrations.md §4.6, `apps/api/src/routes/webhooks.ts`)
 - [ ] `proposeAction()` en `addEntityExternalRef()` gooien een gewone `Error` bij een onbekende of ongeschikte connectie; een getypte fout maken zodat de API die naar `NOT_FOUND`/`CONFLICT` vertaalt (`packages/db/src/feed/`)
 - [ ] Deploy-workflow wacht niet tot Railway klaar is met uitrollen; status van de deploys ophalen (GraphQL `deployments`) en de workflow laten falen bij `FAILED`/`CRASHED` (#064, `.github/workflows/deploy-staging.yml`)
@@ -53,7 +54,6 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] API-procedure voor bewerken na uitvoeren of na een fout (`reopenAction()` bestaat in `packages/db/src/feed/actions.ts`) (#051)
 - [ ] BullMQ bewaart de foutmelding van een mislukte job (`failedReason`) in Valkey; bij een onbekende fout kan daar tekst met persoonsgegevens in staan. Melding vervangen door een code (`apps/worker/src/jobs/execute-action.ts`)
 - [ ] Procedure die de lifecycle-job start: `entities.forget` (alleen `owner`, met bevestiging) (#052, `apps/worker/src/jobs/`)
-- [ ] Bij ontkoppelen ook het token bij Google intrekken: event function `pre-connection-deletion` in `nango-integrations/gmail`; verwijderen bij Nango is gebouwd (#077, #084, docs/integrations.md §5.3, §10 stap 4)
 - [ ] Restcontrole na forgetEntity: overgebleven vrije tekst (feiten, playbooks, samenvattingen, kaarttitels, document-chunks) doorzoeken op naam en identifiers en een kaart voor de owner maken; wacht op open vraag 5 (docs/data-model.md §6.3 stap 3)
 - [ ] `replaceFact()` en `createPlaybookVersion()` gooien `KnowledgeError`; bij de eerste API-procedures vertalen naar `NOT_FOUND`/`CONFLICT`, net als `TransitionError` (`packages/db/src/knowledge/`)
 

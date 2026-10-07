@@ -3,6 +3,7 @@ import {
   type Database,
   getConnection,
   getSyncCursor,
+  isAccountAwaitingPurge,
   listConnections,
   listTenantIds,
   type MailPageItem,
@@ -65,7 +66,7 @@ export interface MailIngestDependencies {
 }
 
 export type MailIngestResult =
-  | { result: 'not_active' | 'cursor_moved' }
+  | { result: 'not_active' | 'awaiting_purge' | 'cursor_moved' }
   | {
       result: 'ingested';
       pages: number;
@@ -87,6 +88,10 @@ export async function processMailIngestJob(
   const start = await withTenant(db, tenantId, async (tx) => {
     const connection = await getConnection(tx, connectionId);
     if (connection?.status !== 'active' || !isMailProvider(connection.provider)) return undefined;
+    // The same mailbox, disconnected earlier and not purged yet: wait for the
+    // purge, or its events would block ours and then disappear with it. The
+    // cursor stays; the next sweep tries again.
+    if (await isAccountAwaitingPurge(tx, connection)) return 'awaiting_purge' as const;
     const cursor = await getSyncCursor(tx, { connectionId, model: INBOX_MESSAGE_MODEL });
     return {
       provider: connection.provider,
@@ -95,6 +100,10 @@ export async function processMailIngestJob(
     };
   });
   if (!start) return { result: 'not_active' };
+  if (start === 'awaiting_purge') {
+    log.info(ids, 'mail ingest waits for the purge of an earlier connection');
+    return { result: 'awaiting_purge' };
+  }
 
   const ref = {
     integrationId: nangoIntegrationIds[start.provider],

@@ -13,7 +13,12 @@ import {
   type NangoProvider,
   nangoProviders,
 } from '@effectief/integrations/nango';
-import type { PurgeConnectionJob, StoredNangoWebhook } from '@effectief/shared';
+import {
+  INBOX_MESSAGE_MODEL,
+  type MailIngestJob,
+  type PurgeConnectionJob,
+  type StoredNangoWebhook,
+} from '@effectief/shared';
 import type { Commit, ConnectDependencies } from './connect.ts';
 import { finishConnectAttempt } from './connect.ts';
 
@@ -23,9 +28,12 @@ import { finishConnectAttempt } from './connect.ts';
 // never reads another mailbox than the one connected (§2.4).
 
 type EnqueuePurge = (job: PurgeConnectionJob) => Promise<void>;
+type EnqueueIngest = (job: MailIngestJob) => Promise<void>;
 
 export interface LifecycleDependencies extends ConnectDependencies {
   enqueuePurge: EnqueuePurge;
+  /** Mail ingest for one connection, deduplicated per connection (§4.2). */
+  enqueueIngest: EnqueueIngest;
 }
 
 const system = { type: 'system' } as const;
@@ -107,7 +115,7 @@ export async function handleAuthWebhook(
  * `account_mismatch` and a card, so ingest stops reading it.
  */
 async function applyAccountCheck(
-  { nango }: LifecycleDependencies,
+  { nango, enqueueIngest }: LifecycleDependencies,
   input: {
     tenantId: string;
     connection: Connection;
@@ -126,17 +134,25 @@ async function applyAccountCheck(
     integrationId: connection.nangoIntegrationId,
     connectionId: connection.nangoConnectionId,
   });
-  await commit(async (tx) => {
+  const active = await commit(async (tx) => {
     if (account.externalAccountId !== connection.externalAccountId) {
       await expireConnection(tx, {
         connectionId: connection.id,
         reason: 'account_mismatch',
         context,
       });
-      return;
+      return false;
     }
-    await reactivateConnection(tx, { connectionId: connection.id, reason: input.reason, context });
+    const after = await reactivateConnection(tx, {
+      connectionId: connection.id,
+      reason: input.reason,
+      context,
+    });
+    return after?.status === 'active';
   });
+  // Resume from the cursor now instead of at the next sweep. After the commit,
+  // so the ingest finds the connection active; a lost job is caught by the sweep.
+  if (active) await enqueueIngest({ tenantId: input.tenantId, connectionId: connection.id });
 }
 
 /** Gone at Nango: revoked, and its data purged by the purge job (§5.2). */
@@ -159,6 +175,44 @@ async function revoke(
   // Inside the transaction: if it rolls back, the purge job finds the
   // connection not revoked and refuses, visibly.
   await enqueuePurge({ tenantId: connection.tenantId, connectionId: connection.id });
+}
+
+/**
+ * One stored sync webhook (§4.1). A finished run is only a signal: the ingest
+ * reads the records. A failed run may mean the grant stopped working; Nango's
+ * `error.type` is no fixed list, so instead of guessing from it, this asks
+ * Nango about the connection, as the hourly health check does (§5.1).
+ */
+export async function handleSyncWebhook(
+  deps: LifecycleDependencies,
+  input: {
+    tenantId: string;
+    connectionId: string | null;
+    payload: Extract<StoredNangoWebhook, { type: 'sync' }>;
+    jobId: string;
+    commit: Commit;
+  },
+): Promise<void> {
+  const { tenantId, connectionId, payload, jobId, commit } = input;
+  if (connectionId && payload.model === INBOX_MESSAGE_MODEL) {
+    if (payload.success) {
+      // Enqueued before the commit: a failed commit retries, the ingest is idempotent.
+      await deps.enqueueIngest({ tenantId, connectionId });
+    } else {
+      deps.log.warn(
+        { tenantId, connectionId, jobId, errorType: payload.error?.type },
+        'nango sync failed',
+      );
+      const connection = await withTenant(deps.db, tenantId, (tx) =>
+        getConnection(tx, connectionId),
+      );
+      if (connection) {
+        const result = await checkConnectionHealth(deps, { tenantId, connection, jobId });
+        deps.log.info({ tenantId, connectionId, jobId, result }, 'checked after failed sync');
+      }
+    }
+  }
+  await commit(async () => {});
 }
 
 export type HealthResult =

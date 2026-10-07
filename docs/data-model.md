@@ -276,6 +276,7 @@ Alle tabellen van fase 1, 2 en 3 staan er (open vraag 1, #049); de logica volgt 
 | `connect_attempts`, `resolve_connect_attempt()`, `webhook_deliveries.connect_attempt_id`, statusredenen `auth_recovered` en `account_mismatch`, auditacties `connection.reauthorized` en `connect_attempt.rejected`, retentiestap `connect_attempts` | gebouwd | 0018, 0019 |
 | `sync_cursors`, `event_contents.from_name` en `cc_addresses`, auditacties `mail.ingested` en `mail.content_removed` | gebouwd | 0020, 0021 |
 | `events.internet_message_id` (#086) | gebouwd | 0022 |
+| DELETE op `sync_cursors` voor de purge (#087) | gebouwd | 0023 |
 
 Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `member` (0005), het PII-register `packages/db/src/pii.ts`, repository-functies in `packages/db/src/memory/`, `packages/db/src/feed/` en `packages/db/src/knowledge/`, en de datalevenscyclus in `packages/db/src/lifecycle/` (retentie, forgetEntity, ontkoppelen en purgen; #052). API-procedures: `tenant.*`, `cards.list`, `cards.get`, `actions.approve`, `actions.reject`, `entities.get`, `connections.*` (`list`, `startConnect`, `complete`, `reconnect`, `disconnect`). Nog geen extractie, leren of RAG.
 
@@ -309,7 +310,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - **Datalevenscyclus (#052)**, afwijkend van of aanvullend op het ontwerp hieronder:
   - Retentie: `webhook_deliveries` gaat 30 dagen na `processed_at` weg (alleen `processed`). Inputs van acties worden geleegd 180 dagen na de laatste statuswijziging (`updated_at`) in `executed`, `rejected` of `failed`. Elke batch is een eigen transactie met een eigen audit-regel.
   - forgetEntity neemt ook entiteiten mee die in de persoon zijn samengevoegd (`merged_into_id`, recursief). De restcontrole in vrije tekst (§6.3 stap 3) is niet gebouwd (open vraag 5, docs/todo.md).
-  - Purgen van een connectie verwijdert ook kaarten (bij haar events, met een actie via haar, of `connection_problem` van haar) en documenten met `origin = 'connection'`. Een actieve connectie wordt geweigerd: eerst `disconnectConnection()` (`→ revoked`). De job `purge-connection` verwijdert de connectie eerst bij Nango (404 = al weg) en purget pas daarna; het token bij Google intrekken (`pre-connection-deletion`) is niet gebouwd.
+  - Purgen van een connectie verwijdert ook kaarten (bij haar events, met een actie via haar, of `connection_problem` van haar) en documenten met `origin = 'connection'`. Een actieve connectie wordt geweigerd: eerst `disconnectConnection()` (`→ revoked`). De job `purge-connection` verwijdert de connectie eerst bij Nango (404 = al weg; bij Gmail trekt de Nango-function `pre-connection-deletion` daarbij de toegang bij Google in) en purget pas daarna, ook de `sync_cursors` van de connectie.
 - **`tenant_id` heeft een default** uit de transactie (§3.1, #043), ook als primaire sleutel van `company_profile`.
 - **Fase 3 al aangemaakt:** `documents`, `document_chunks`, `chunk_embeddings`, `document_entities` en `insights` staan er al (open vraag 1), zonder verwerkingslogica.
 - **Extra checks:**
@@ -370,7 +371,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 - **Constraints:** `unique (nango_connection_id)` (globaal; Nango-ID's zijn uniek per omgeving); partieel `unique (tenant_id, provider, external_account_id) where status = 'active'`.
 - **Indexen:** `(tenant_id, status)`.
 - **Tenant opzoeken bij webhooks:** de webhook weet alleen `nango_connection_id`. Opzoeken over tenants heen mag de app-rol niet. Daarvoor één smalle `SECURITY DEFINER`-functie `resolve_connection(nango_integration_id, nango_connection_id) returns (tenant_id, connection_id)`, alleen uitvoerbaar door `app_runtime` (#038; migratie 0017).
-- **Verwijderen:** zacht. Ontkoppelen: `disconnectConnection()` (`revoked`) → job `purge-connection` met `purgeConnection()`: verwijdert events, `entity_external_refs`, documenten en kaarten van de connectie, en entiteiten die daarna nergens meer aan hangen (zie §6.3) → `purged`, `account_label` wordt `null`, aantallen in de audit-regel. De rij blijft als grafsteen voor audit en voor late webhooks.
+- **Verwijderen:** zacht. Ontkoppelen: `disconnectConnection()` (`revoked`) → job `purge-connection` met `purgeConnection()`: verwijdert events, `entity_external_refs`, documenten, kaarten en `sync_cursors` van de connectie, en entiteiten die daarna nergens meer aan hangen (zie §6.3) → `purged`, `account_label` wordt `null`, aantallen in de audit-regel. De rij blijft als grafsteen voor audit en voor late webhooks.
 - **Retentie:** zolang de tenant bestaat.
 - **Fase:** 1.
 
@@ -434,7 +435,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 
 - **Sleutel:** PK `(tenant_id, connection_id, model)`. Met `tenant_id` in de sleutel botst een poging van een andere tenant op de foreign key, niet stil op een rij die hij niet ziet.
 - **Eén ingest tegelijk:** `applyMailPage()` vergrendelt de rij (`FOR UPDATE`) en neemt een pagina alleen op als de cursor nog gelijk is aan die waarvandaan de pagina gelezen werd; anders stopt de job (een andere ingest was eerst). Tijdens de Nango-call staat geen transactie open.
-- **Rechten:** S, I, U(`cursor`, `updated_at`); verdwijnt met de connectie (cascade).
+- **Rechten:** S, I, U(`cursor`, `updated_at`), D. `purgeConnection()` verwijdert de cursor; de connectie zelf blijft als grafsteen, dus de cascade vuurt niet (#087).
 - **Persoonsgegevens:** geen; de cursor is een ondoorzichtige positie bij Nango.
 - **Fase:** 1.
 
@@ -849,7 +850,7 @@ S = SELECT, I = INSERT, U = UPDATE (alleen genoemde kolommen, plus `updated_at`)
 | `connections` | S, I, U(`status`, `status_reason`, `status_changed_at`, `last_synced_at`, `account_label`, `external_account_id`) | |
 | `connect_attempts` | S, I, U(`consumed_at`, `connection_id`, `nango_connection_id`, `failure_code`), D | uitkomst eenmalig (in code) |
 | `webhook_deliveries` | S, I, U(`status`, `attempts`, `last_error_code`, `processed_at`), D | |
-| `sync_cursors` | S, I, U(`cursor`) | verdwijnt met de connectie |
+| `sync_cursors` | S, I, U(`cursor`), D | verdwijnt bij de purge van de connectie |
 | `events` | S, I, U(`summary`, `summarized_at`), D | append-only; `summary` eenmalig (trigger) |
 | `event_contents` | S, I, D | onveranderlijk |
 | `event_entities`, `card_events`, `card_entities`, `task_entities`, `document_entities` | S, I, D | |
@@ -905,7 +906,7 @@ sequenceDiagram
 ```
 
 1. **Ontvangen** (api): handtekening op de ruwe body, `resolve_connection()`, rij in `webhook_deliveries`, 200, job. Onbekende connectie: loggen met ID en 200 (geen retries van Nango uitlokken).
-2. **Inlezen** (job `mail-ingest` per connectie, gezet door de webhook-job en elke 10 minuten door een sweep; docs/integrations.md §4.2): records ophalen bij Nango vanaf de eigen cursor in `sync_cursors`. Per pagina in één transactie: `events` (`on conflict (tenant_id, source, external_id) do nothing`), `event_contents` met `retain_until`, `event_entities` voor afzenders en ontvangers die al een `email`-identifier hebben (`linked_by = 'rule'`), bij verwijderde mail de `event_contents` weg, de nieuwe cursor, `connections.last_synced_at` en audit `mail.ingested`. Geen nieuwe entiteiten hier: nieuwsbrieven en spam horen geen contact te worden. Daarna Nango's kopie prunen tot de cursor. De delivery is al `processed` zodra de ingest-job gezet is.
+2. **Inlezen** (job `mail-ingest` per connectie, gezet door de webhook-job en elke 10 minuten door een sweep; docs/integrations.md §4.2): records ophalen bij Nango vanaf de eigen cursor in `sync_cursors`, alleen voor een `active` connectie; staat dezelfde mailbox in deze tenant nog als `revoked` connectie die op haar purge wacht, dan wacht de ingest (anders bezetten haar events de unieke sleutel en verdwijnen ze daarna met de purge; #087). Per pagina in één transactie: `events` (`on conflict (tenant_id, source, external_id) do nothing`), `event_contents` met `retain_until`, `event_entities` voor afzenders en ontvangers die al een `email`-identifier hebben (`linked_by = 'rule'`), bij verwijderde mail de `event_contents` weg, de nieuwe cursor, `connections.last_synced_at` en audit `mail.ingested`. Geen nieuwe entiteiten hier: nieuwsbrieven en spam horen geen contact te worden. Daarna Nango's kopie prunen tot de cursor. De delivery is al `processed` zodra de ingest-job gezet is.
 3. **Classificeren** (job `classify`, per event): het model krijgt de mail als gemarkeerde, onvertrouwde data, plus `company_profile`. Output (Zod): relevant ja/nee, soort, samenvatting, voorgestelde entiteiten, voorgestelde feiten. **Geen databasetransactie open tijdens de modelaanroep.**
 4. **Vastleggen** (één transactie): `events.summary`; bij relevant: entiteiten aanmaken of koppelen (contact + bedrijf, identifiers), kaart aanmaken of bijwerken (`dedupe_key = thread:<thread_key>`), `card_events`/`card_entities`, voorgestelde feiten als `proposed` (fase 2). Bij niet relevant: alleen de samenvatting; geen kaart, geen entiteit.
 5. **Actie voorstellen** (job `propose`): context = mail-inhoud + bevestigde feiten en relaties van de entiteiten + playbooks (embedding-zoektocht op `trigger_description`, filter op scope) + live providerdata (bijv. openstaande facturen uit Moneybird). Output → `actions` met `status = 'concept'`, `proposed_input` = `input`, `playbook_id`, deterministische `idempotency_key`. Handtekening en taal in code.

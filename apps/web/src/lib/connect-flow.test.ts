@@ -2,12 +2,15 @@ import type { CompleteConnectOutput, ConnectionSummary } from '@effectief/shared
 import { ORPCError } from '@orpc/client';
 import { describe, expect, it } from 'vitest';
 import {
+  connectionsToRenew,
   disconnectExplanation,
   lastSyncText,
+  nextStepText,
   noticeForError,
   noticeForOutcome,
   notices,
   receivedMailText,
+  renewNoticeText,
   statusText,
   waitForConnection,
 } from './connect-flow.ts';
@@ -75,6 +78,30 @@ describe('notices', () => {
     );
   });
 
+  it('tells the user what to do per status', () => {
+    expect(nextStepText(connection())).toBeNull();
+    expect(nextStepText(connection({ status: 'purged' }))).toBeNull();
+    expect(nextStepText(connection({ status: 'revoked' }))).toMatch(/wordt verwijderd/);
+    const expired = connection({ status: 'expired', statusReason: 'invalid_grant' });
+    expect(nextStepText(expired)).toMatch(
+      /^Kies "Koppeling vernieuwen" en log opnieuw in bij Gmail/,
+    );
+    expect(
+      nextStepText(connection({ status: 'expired', statusReason: 'account_mismatch' })),
+    ).toMatch(/Een ander account kan niet/);
+    expect(nextStepText({ ...expired, canManage: false })).toMatch(
+      /^Vraag wie deze koppeling maakte/,
+    );
+  });
+
+  it('asks on the home page to renew only expired connections', () => {
+    const expired = connection({ id: 'e', status: 'expired', statusReason: 'invalid_grant' });
+    expect(connectionsToRenew([connection(), expired, connection({ status: 'revoked' })])).toEqual([
+      expired,
+    ]);
+    expect(renewNoticeText(expired)).toMatch(/^De koppeling met Gmail .* werkt niet meer/);
+  });
+
   it('shows "nog niet" until the first sync, then the time in Amsterdam', () => {
     expect(lastSyncText(null)).toBe('nog niet');
     expect(lastSyncText(new Date('2026-10-05T10:00:00Z'))).toContain('12:00');
@@ -89,6 +116,6 @@ describe('notices', () => {
   it('tells Outlook users where to withdraw the access at Microsoft', () => {
     expect(disconnectExplanation('outlook')).toContain('myapps.microsoft.com');
     expect(disconnectExplanation('outlook')).toContain('account.live.com/consent/Manage');
-    expect(disconnectExplanation('gmail')).toContain('myaccount.google.com/permissions');
+    expect(disconnectExplanation('gmail')).toContain('Google-account wordt ook ingetrokken');
   });
 });

@@ -18,7 +18,7 @@ import {
 } from './connect-attempts.ts';
 import {
   expireConnection,
-  findActiveAccountConnection,
+  findLiveAccountConnection,
   getConnectionByNangoId,
   reactivateConnection,
 } from './connection-status.ts';
@@ -362,13 +362,13 @@ describe('connection status', () => {
     expect(
       (
         await asA((tx) =>
-          findActiveAccountConnection(tx, 'gmail', connection.externalAccountId ?? randomUUID()),
+          findLiveAccountConnection(tx, 'gmail', connection.externalAccountId ?? randomUUID()),
         )
       )?.id,
     ).toBe(connection.id);
     expect(
       await asB((tx) =>
-        findActiveAccountConnection(tx, 'gmail', connection.externalAccountId ?? randomUUID()),
+        findLiveAccountConnection(tx, 'gmail', connection.externalAccountId ?? randomUUID()),
       ),
     ).toBeUndefined();
   });
