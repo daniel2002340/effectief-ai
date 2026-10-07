@@ -137,8 +137,12 @@ const dateTime = new Intl.DateTimeFormat('nl-NL', {
   timeStyle: 'short',
 });
 
-export function lastSyncText(lastSyncedAt: Date | null): string {
-  return lastSyncedAt ? dateTime.format(lastSyncedAt) : 'nog niet';
+/**
+ * The OpenAPI link hands JSON back as it came: a date in a response is an ISO
+ * string at runtime, whatever the contract's type says. `new Date()` takes both.
+ */
+export function lastSyncText(lastSyncedAt: Date | string | null): string {
+  return lastSyncedAt ? dateTime.format(new Date(lastSyncedAt)) : 'nog niet';
 }
 
 const count = new Intl.NumberFormat('nl-NL');
