@@ -73,6 +73,32 @@ test('asks to renew an expired connection on the dashboard', async ({ page }) =>
   );
 });
 
+test('shows a synced connection with its time, dates as JSON strings', async ({ page }) => {
+  await tenantAs(page, 'Installatiebedrijf Jansen');
+  await page.route('**/api/connections', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          id: '0199a1b2-0000-7000-8000-000000000002',
+          provider: 'gmail',
+          status: 'active',
+          statusReason: null,
+          accountLabel: 'info@jansen.example',
+          lastSyncedAt: '2026-10-06T16:22:08.000Z',
+          receivedMailCount: 12,
+          connectedAt: '2026-10-05T10:00:00.000Z',
+          canManage: true,
+        },
+      ]),
+    }),
+  );
+  await page.goto('/koppelingen');
+  await expect(page.getByText(/Laatste synchronisatie: .*18:22/)).toBeVisible();
+  await expect(page.getByText('12 mails binnengekomen', { exact: false })).toBeVisible();
+});
+
 test('logs in with JSON and opens the dashboard', async ({ page }) => {
   let loggedIn = false;
   await page.route('**/api/tenant', (route) =>

@@ -54,6 +54,7 @@ Open werk in de codebase dat buiten de taak van een sessie viel.
 - [ ] API-procedure voor bewerken na uitvoeren of na een fout (`reopenAction()` bestaat in `packages/db/src/feed/actions.ts`) (#051)
 - [ ] BullMQ bewaart de foutmelding van een mislukte job (`failedReason`) in Valkey; bij een onbekende fout kan daar tekst met persoonsgegevens in staan. Melding vervangen door een code (`apps/worker/src/jobs/execute-action.ts`)
 - [ ] Procedure die de lifecycle-job start: `entities.forget` (alleen `owner`, met bevestiging) (#052, `apps/worker/src/jobs/`)
+- [ ] Datums in oRPC-antwoorden komen in de web-app binnen als ISO-tekst, terwijl het contract `Date` belooft (`OpenAPILink` deserialiseert niet); nu opgevangen in `lastSyncText()`. Algemeen oplossen voordat de feed datums toont, bijv. met `ResponseValidationPlugin` en `z.coerce.date()` in het contract (`apps/web/src/lib/orpc.ts`, `packages/shared/src/contract.ts`)
 - [ ] Restcontrole na forgetEntity: overgebleven vrije tekst (feiten, playbooks, samenvattingen, kaarttitels, document-chunks) doorzoeken op naam en identifiers en een kaart voor de owner maken; wacht op open vraag 5 (docs/data-model.md §6.3 stap 3)
 - [ ] `replaceFact()` en `createPlaybookVersion()` gooien `KnowledgeError`; bij de eerste API-procedures vertalen naar `NOT_FOUND`/`CONFLICT`, net als `TransitionError` (`packages/db/src/knowledge/`)
 

@@ -105,6 +105,8 @@ describe('notices', () => {
   it('shows "nog niet" until the first sync, then the time in Amsterdam', () => {
     expect(lastSyncText(null)).toBe('nog niet');
     expect(lastSyncText(new Date('2026-10-05T10:00:00Z'))).toContain('12:00');
+    // What the API's JSON actually carries.
+    expect(lastSyncText('2026-10-05T10:00:00.000Z')).toContain('12:00');
   });
 
   it('counts the mails that came in', () => {
