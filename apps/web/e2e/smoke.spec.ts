@@ -20,6 +20,14 @@ function tenantAs(page: Page, name: string | null) {
   );
 }
 
+// The dashboard also asks for the connections (the notice to renew one);
+// without a session-backed API in these tests, none by default.
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/connections', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+  );
+});
+
 test('sends visitors without a session to the login page', async ({ page }) => {
   await tenantAs(page, null);
   await page.goto('/');
@@ -32,6 +40,37 @@ test('shows the tenant name on the dashboard', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1, name: 'Vandaag' })).toBeVisible();
   await expect(page.getByText('Installatiebedrijf Jansen')).toBeVisible();
+});
+
+test('asks to renew an expired connection on the dashboard', async ({ page }) => {
+  await tenantAs(page, 'Installatiebedrijf Jansen');
+  await page.route('**/api/connections', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([
+        {
+          id: '0199a1b2-0000-7000-8000-000000000001',
+          provider: 'gmail',
+          status: 'expired',
+          statusReason: 'invalid_grant',
+          accountLabel: 'info@jansen.example',
+          lastSyncedAt: null,
+          receivedMailCount: 3,
+          connectedAt: '2026-10-05T10:00:00.000Z',
+          canManage: true,
+        },
+      ]),
+    }),
+  );
+  await page.goto('/');
+  await expect(page.getByRole('alert')).toContainText(
+    'De koppeling met Gmail (info@jansen.example) werkt niet meer.',
+  );
+  await expect(page.getByRole('link', { name: 'Koppeling vernieuwen' })).toHaveAttribute(
+    'href',
+    '/koppelingen',
+  );
 });
 
 test('logs in with JSON and opens the dashboard', async ({ page }) => {

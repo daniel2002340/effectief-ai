@@ -1,4 +1,4 @@
-import { useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,10 @@ export const Route = createFileRoute('/')({
 
 function HomePage() {
   const { data: tenant } = useSuspenseQuery(orpc.tenant.current.queryOptions());
-  const { data: connections } = useSuspenseQuery(orpc.connections.list.queryOptions());
-  // Until the feed is built (session 5), the card "Koppeling vernieuwen" shows here.
-  const toRenew = connectionsToRenew(connections);
+  // Until the feed is built (session 5), the card "Koppeling vernieuwen" shows
+  // here. Not suspending: the page never waits for or fails on this notice.
+  const { data: connections } = useQuery(orpc.connections.list.queryOptions());
+  const toRenew = connectionsToRenew(connections ?? []);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
