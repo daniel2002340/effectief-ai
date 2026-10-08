@@ -58,11 +58,11 @@ pnpm exec nango dryrun inbox-messages <connectie-id> -e staging --integration-id
 
 De uitvoer bevat **echte mail**. Kopieer hem niet naar issues, PR's of chats.
 
-**Fixtures maken (`--save`).** Met `--save` schrijft de CLI alle API-antwoorden en records naar `gmail/tests/inbox-messages.test.json`. Dat bestand bevat echte mail en mag zo **nooit** in git:
+**Fixtures maken (`--save`).** Met `--save` schrijft de CLI alle API-antwoorden en records naar `<integratie>/tests/inbox-messages.test.json`. Voor een incrementele run geef je `--checkpoint` mee; bij Outlook `'{"link":"<deltaLink>","backfill":false}'`. Dat bestand bevat echte mail en mag zo **nooit** in git:
 
 1. Draai de dry run met `--save`.
 2. Verplaats het bestand meteen buiten de repo, bijvoorbeeld naar `/tmp/inbox-messages.raw.json`.
-3. Anonimiseer het met `node scripts/anonymize-gmail-mocks.ts /tmp/inbox-messages.raw.json tests/fixtures/<naam>.json`. Het script vervangt namen, adressen, onderwerpen, tekst, bestandsnamen, linkdoelen en afbeeldingen door neutrale waarden met dezelfde structuur, laat alleen de headers staan die de function leest, en laat de records weg (de tests berekenen ze uit de geanonimiseerde antwoorden).
+3. Anonimiseer het met `node scripts/anonymize-gmail-mocks.ts /tmp/inbox-messages.raw.json tests/fixtures/<naam>.json` (Outlook: `scripts/anonymize-outlook-mocks.ts`; dat vervangt ook ID's, map-ID's en delta-tokens overal waar ze staan, met dezelfde lengte). Het script vervangt namen, adressen, onderwerpen, tekst, bestandsnamen, linkdoelen en afbeeldingen door neutrale waarden met dezelfde structuur, laat alleen de headers staan die de function leest, en laat de records weg (de tests berekenen ze uit de geanonimiseerde antwoorden).
 4. Kijk het resultaat na (`git diff`) op resten van echte gegevens vóór je commit. gitleaks draait bij de commit, maar kent geen namen of adressen.
 5. Verwijder het ruwe bestand.
 
