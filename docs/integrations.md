@@ -473,6 +473,8 @@ Gebruiker klikt "Ontkoppelen" en bevestigt → `connections.disconnect` (de kopp
 3. Late webhooks voor deze connectie vinden via `resolve_connection()` een `revoked`/`purged` grafsteen en doen niets.
 4. Dezelfde mailbox opnieuw koppelen: een nieuwe connectie (§2.4).
 
+Op staging doorlopen op 2026-10-07 (Gmail, Daniëls mailbox): mail binnen als event, daarna ontkoppelen → `revoked` en 2 seconden later `purged` (221 events verwijderd); in de database 0 events, cursors, kaarten en refs, `account_label` leeg, audit alleen met aantallen; bij Nango de connectie weg en `pre-connection-deletion` geslaagd vóór de deletion-webhook.
+
 Getest in `apps/worker/test/connection-lifecycle.test.ts`: na ontkoppelen staat er geen event, inhoud, koppeling, cursor of kaart van de connectie meer in de database en geen persoonsgegeven in de audit; verlopen wordt niet opgehaald en opnieuw koppelen hervat zonder dubbele events; dezelfde mailbox opnieuw koppelen botst niet met de oude.
 
 ---
@@ -642,5 +644,5 @@ Volgens CLAUDE.md: één integratie end-to-end voordat de volgende begint. Voors
 1. **Nango-basis:** env-schema's, Nango-client, webhook-route met verificatie en `webhook_deliveries` + `resolve_connection()` (todo uit #038), queue `nango-webhook`, retentiestap. Tests met vastgelegde webhook-bodies.
 2. **Koppelen (Gmail):** redirect `/oauth/callback` in Caddy, `connect_attempts` + `resolve_connect_attempt()`, procedures, Connect UI in web, `account-info` en `validate-connection` in nango-integrations, CI-compile en deploy naar staging.
 3. **Inlezen (Gmail):** sync `inbox-messages` met fixtures, `sync_cursors`, `mail-ingest` + vangnet, normalisatie, prune; end-to-end op staging met Daniëls mailbox.
-4. **Levenscyclus:** refresh/override/deletion, kaart "Koppeling vernieuwen", ontkoppelen met Nango-delete en `pre-connection-deletion`. Gebouwd (#084, #087); de doorloop op staging staat in docs/todo.md tot hij gedaan is.
+4. **Levenscyclus:** refresh/override/deletion, kaart "Koppeling vernieuwen", ontkoppelen met Nango-delete en `pre-connection-deletion`. Gebouwd (#084, #087); op staging doorlopen op 2026-10-07 (§5.3).
 5. **Outlook:** dezelfde stappen 2–4 voor Outlook, met eerst een fixture van het `@removed`-gedrag.
