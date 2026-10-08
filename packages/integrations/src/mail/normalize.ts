@@ -4,6 +4,7 @@ import {
   type EventSource,
   type InboxMessage,
   inboxMessageSchema,
+  providerAttachmentIdSchema,
   type RecordEventInput,
 } from '@effectief/shared';
 
@@ -57,12 +58,11 @@ export function cleanText(text: string): string {
 /** A Message-ID: printable, no spaces, within one RFC 5322 line; anything else is dropped. */
 const MESSAGE_ID = /^[\x21-\x7e]{1,998}$/;
 
-const PROVIDER_CODE = /^[\w.:/#-]{1,128}$/;
 const MIME_TYPE = /^[\w.+-]+\/[\w.+-]+$/;
 
 function attachmentsOf(message: InboxMessage): AttachmentMeta[] {
   return message.attachments
-    .filter((attachment) => PROVIDER_CODE.test(attachment.attachmentId))
+    .filter((attachment) => providerAttachmentIdSchema.safeParse(attachment.attachmentId).success)
     .slice(0, 100)
     .map((attachment) =>
       attachmentMetaSchema.parse({

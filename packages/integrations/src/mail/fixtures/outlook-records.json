@@ -1,0 +1,94 @@
+[
+  {
+    "id": "AAMkMsg1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "threadId": "AAQkConv1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "internetMessageId": "<bericht-1@voorbeeld.example>",
+    "receivedAt": "2026-10-08T08:37:41.000Z",
+    "from": {
+      "address": "persoon1@voorbeeld.example",
+      "name": "Persoon 1"
+    },
+    "to": ["persoon2@voorbeeld.example"],
+    "cc": [],
+    "subject": "Onderwerp 1",
+    "bodyText": "lorem ipsum dolor sit amet tekst voorbeeld?",
+    "labels": ["INBOX"],
+    "attachments": [],
+    "backfill": true
+  },
+  {
+    "id": "AAMkMsg2xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "threadId": "AAQkConv2xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "internetMessageId": "<bericht-2@voorbeeld.example>",
+    "receivedAt": "2026-10-08T06:21:54.000Z",
+    "from": {
+      "address": "persoon3@voorbeeld.example",
+      "name": "Persoon 3"
+    },
+    "to": ["persoon2@voorbeeld.example"],
+    "cc": [],
+    "subject": "Onderwerp 2",
+    "bodyText": "lorem\nipsum dolor sit amet tekst voorbeeld regel\nlorem ipsum dolor sit amet tekst voorbeeld regel**lorem<ipsum**dolor>.\nsit amet tekst voorbeeld regel lorem ipsum dolor, sit amet tekst voorbeeld regel lorem\nipsum dolor sit<amet?tekst=voorbeeld>\nregel lorem ipsum dolor sit tekst voorbeeld regel lorem ipsum dolor sit\namet,\ntekst voorbeeld\nregel<lorem?ipsum=dolor>\nsit amet, tekst voorbeeld regel, lorem, ipsum dolor",
+    "labels": ["INBOX"],
+    "attachments": [],
+    "backfill": true
+  },
+  {
+    "id": "AAMkMsg1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "threadId": "AAQkConv1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "internetMessageId": "<bericht-1@voorbeeld.example>",
+    "receivedAt": "2026-10-08T08:37:41.000Z",
+    "from": {
+      "address": "persoon1@voorbeeld.example",
+      "name": "Persoon 1"
+    },
+    "to": ["persoon2@voorbeeld.example"],
+    "cc": [],
+    "subject": "Onderwerp 1",
+    "bodyText": "lorem ipsum dolor sit amet tekst voorbeeld?",
+    "labels": ["INBOX", "UNREAD"],
+    "attachments": [],
+    "backfill": false
+  },
+  {
+    "id": "AAMkMsg2xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "threadId": "AAQkConv2xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "internetMessageId": "<bericht-2@voorbeeld.example>",
+    "receivedAt": "2026-10-08T08:37:32.000Z",
+    "from": {
+      "address": "persoon1@voorbeeld.example",
+      "name": "Persoon 1"
+    },
+    "to": ["persoon2@voorbeeld.example"],
+    "cc": [],
+    "subject": "Onderwerp 2",
+    "bodyText": "lorem ipsum dolor sit amet tekst voorbeeld regel",
+    "labels": ["INBOX", "UNREAD"],
+    "attachments": [
+      {
+        "name": "bestand-1.pdf",
+        "mimeType": "application/pdf",
+        "size": 13484,
+        "attachmentId": "AAMkAtt1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      }
+    ],
+    "backfill": false
+  },
+  {
+    "id": "AAMkMsg3xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "threadId": "AAQkConv3xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "internetMessageId": "<bericht-3@voorbeeld.example>",
+    "receivedAt": "2026-10-08T08:37:14.000Z",
+    "from": {
+      "address": "persoon1@voorbeeld.example",
+      "name": "Persoon 1"
+    },
+    "to": ["persoon2@voorbeeld.example"],
+    "cc": [],
+    "subject": "Onderwerp 3",
+    "bodyText": "lorem ipsum dolor sit amet tekst voorbeeld regel?",
+    "labels": ["INBOX", "UNREAD"],
+    "attachments": [],
+    "backfill": false
+  }
+]

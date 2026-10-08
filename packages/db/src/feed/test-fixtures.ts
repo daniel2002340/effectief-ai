@@ -38,11 +38,11 @@ export const asUser = (userId: string) => ({ type: 'user', userId }) as const;
 export function createTestConnection(
   tx: TenantTransaction,
   { userId }: TestTenant,
-  provider: 'gmail' | 'moneybird' = 'gmail',
+  provider: 'gmail' | 'outlook' | 'moneybird' = 'gmail',
 ) {
   return createConnection(tx, {
     provider,
-    nangoIntegrationId: provider === 'gmail' ? 'google-mail' : 'moneybird',
+    nangoIntegrationId: provider === 'gmail' ? 'google-mail' : provider,
     nangoConnectionId: `conn-${randomUUID()}`,
     externalAccountId: `account-${randomUUID()}`,
     accountLabel: 'info@bedrijf.example',

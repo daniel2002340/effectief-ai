@@ -1,0 +1,184 @@
+{
+  "api": {
+    "get": {
+      "/v1.0/me/mailFolders('inbox')/messages/delta": {
+        "response": {
+          "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#voorbeeld",
+          "value": [
+            {
+              "@odata.type": "#microsoft.graph.message",
+              "@odata.etag": "W/\"etag\"",
+              "id": "AAMkMsg1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "receivedDateTime": "2026-10-08T08:37:41Z",
+              "hasAttachments": false,
+              "internetMessageId": "<bericht-1@voorbeeld.example>",
+              "subject": "Onderwerp 1",
+              "conversationId": "AAQkConv1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "isRead": false,
+              "isDraft": false,
+              "body": {
+                "contentType": "text",
+                "content": "lorem ipsum dolor sit amet tekst voorbeeld?\r\n\r\n"
+              },
+              "from": {
+                "emailAddress": {
+                  "name": "Persoon 1",
+                  "address": "persoon1@voorbeeld.example"
+                }
+              },
+              "toRecipients": [
+                {
+                  "emailAddress": {
+                    "name": "Persoon 2",
+                    "address": "persoon2@voorbeeld.example"
+                  }
+                }
+              ],
+              "ccRecipients": []
+            },
+            {
+              "@odata.type": "#microsoft.graph.message",
+              "@odata.etag": "W/\"etag\"",
+              "id": "AAMkMsg2xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "receivedDateTime": "2026-10-08T08:37:32Z",
+              "hasAttachments": true,
+              "internetMessageId": "<bericht-2@voorbeeld.example>",
+              "subject": "Onderwerp 2",
+              "conversationId": "AAQkConv2xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "isRead": false,
+              "isDraft": false,
+              "body": {
+                "contentType": "text",
+                "content": "lorem ipsum dolor sit amet tekst voorbeeld regel\r\n"
+              },
+              "from": {
+                "emailAddress": {
+                  "name": "Persoon 1",
+                  "address": "persoon1@voorbeeld.example"
+                }
+              },
+              "toRecipients": [
+                {
+                  "emailAddress": {
+                    "name": "Persoon 2",
+                    "address": "persoon2@voorbeeld.example"
+                  }
+                }
+              ],
+              "ccRecipients": []
+            },
+            {
+              "@odata.type": "#microsoft.graph.message",
+              "@odata.etag": "W/\"etag\"",
+              "id": "AAMkMsg3xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "receivedDateTime": "2026-10-08T08:37:14Z",
+              "hasAttachments": false,
+              "internetMessageId": "<bericht-3@voorbeeld.example>",
+              "subject": "Onderwerp 3",
+              "conversationId": "AAQkConv3xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "isRead": false,
+              "isDraft": false,
+              "body": {
+                "contentType": "text",
+                "content": "lorem ipsum dolor sit amet tekst voorbeeld regel?\r\n"
+              },
+              "from": {
+                "emailAddress": {
+                  "name": "Persoon 1",
+                  "address": "persoon1@voorbeeld.example"
+                }
+              },
+              "toRecipients": [
+                {
+                  "emailAddress": {
+                    "name": "Persoon 2",
+                    "address": "persoon2@voorbeeld.example"
+                  }
+                }
+              ],
+              "ccRecipients": []
+            }
+          ],
+          "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/mailFolders('inbox')/messages/delta?$deltatoken=token1"
+        },
+        "status": 200,
+        "headers": {
+          "date": "Thu, 08 Oct 2026 08:38:42 GMT",
+          "content-type": "application/json; odata.metadata=minimal; odata.streaming=true; IEEE754Compatible=false; charset=utf-8",
+          "transfer-encoding": "chunked",
+          "connection": "keep-alive",
+          "x-xss-protection": "0",
+          "x-content-type-options": "nosniff",
+          "x-download-options": "noopen",
+          "x-frame-options": "SAMEORIGIN",
+          "x-dns-prefetch-control": "off",
+          "referrer-policy": "strict-origin",
+          "strict-transport-security": "max-age=31536000",
+          "content-security-policy-report-only": "default-src 'self' https://app.nango.dev https://api.nango.dev https://connect.nango.dev https://connect.nango.dev/;child-src 'self';connect-src 'self' https://*.google-analytics.com https://*.sentry.io https://app.nango.dev https://api.nango.dev wss://api.nango.dev/ https://connect.nango.dev https://connect.nango.dev/ https://api.nango.dev https://*.posthog.com https://*.stripe.com https://*.plain.com wss://*.plain.com https://raw.githubusercontent.com;font-src 'self' data: https://*.googleapis.com https://*.gstatic.com https://*.cdn-plain.com;form-action 'self' https://api.nango.dev;frame-src 'self' https://accounts.google.com https://app.nango.dev https://api.nango.dev https://connect.nango.dev https://connect.nango.dev/ https://www.youtube.com https://*.stripe.com;img-src 'self' data: blob: https://app.nango.dev https://api.nango.dev https://*.google-analytics.com https://*.googleapis.com https://*.posthog.com https://img.logo.dev https://*.ytimg.com https://*.plain.com;manifest-src 'self';media-src 'self';object-src 'self';script-src 'self' 'unsafe-eval' 'unsafe-inline' https://app.nango.dev https://api.nango.dev https://*.stripe.com https://*.google-analytics.com https://*.googleapis.com https://apis.google.com https://*.posthog.com https://www.youtube.com https://*.cdn-plain.com;style-src blob: 'self' 'unsafe-inline' https://*.googleapis.com https://app.nango.dev https://api.nango.dev;worker-src blob: 'self' https://app.nango.dev https://api.nango.dev https://*.googleapis.com https://*.posthog.com;base-uri 'self';frame-ancestors 'self';script-src-attr 'none';upgrade-insecure-requests",
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "Authorization, Etag, Content-Type, Content-Length, X-Nango-Signature, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-Nango-Invocation-Id",
+          "x-ratelimit-limit": "200",
+          "x-ratelimit-remaining": "197",
+          "x-ratelimit-reset": "1791448781",
+          "cache-control": "private",
+          "request-id": "476d186d-e40e-43b2-af73-0af056ff893f",
+          "client-request-id": "476d186d-e40e-43b2-af73-0af056ff893f",
+          "x-ms-ags-diagnostic": "{\"ServerInfo\":{\"DataCenter\":\"West US 2\",\"Slice\":\"E\",\"Ring\":\"4\",\"ScaleUnit\":\"004\",\"RoleInstance\":\"MW2PEPF00013F54\"}}"
+        },
+        "request": {
+          "params": {
+            "$deltatoken": "token2"
+          },
+          "headers": {
+            "Prefer": "outlook.body-content-type=\"text\", odata.maxpagesize=50"
+          }
+        }
+      },
+      "/v1.0/me/messages/AAMkMsg2xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%3D/attachments": {
+        "response": {
+          "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#voorbeeld",
+          "value": [
+            {
+              "@odata.type": "#microsoft.graph.fileAttachment",
+              "@odata.mediaContentType": "application/pdf",
+              "id": "AAMkAtt1xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+              "name": "bestand-1.pdf",
+              "contentType": "application/pdf",
+              "size": 13484,
+              "isInline": false
+            }
+          ]
+        },
+        "status": 200,
+        "headers": {
+          "date": "Thu, 08 Oct 2026 08:38:42 GMT",
+          "content-type": "application/json; odata.metadata=minimal; odata.streaming=true; IEEE754Compatible=false; charset=utf-8",
+          "transfer-encoding": "chunked",
+          "connection": "keep-alive",
+          "x-xss-protection": "0",
+          "x-content-type-options": "nosniff",
+          "x-download-options": "noopen",
+          "x-frame-options": "SAMEORIGIN",
+          "x-dns-prefetch-control": "off",
+          "referrer-policy": "strict-origin",
+          "strict-transport-security": "max-age=31536000",
+          "content-security-policy-report-only": "default-src 'self' https://app.nango.dev https://api.nango.dev https://connect.nango.dev https://connect.nango.dev/;child-src 'self';connect-src 'self' https://*.google-analytics.com https://*.sentry.io https://app.nango.dev https://api.nango.dev wss://api.nango.dev/ https://connect.nango.dev https://connect.nango.dev/ https://api.nango.dev https://*.posthog.com https://*.stripe.com https://*.plain.com wss://*.plain.com https://raw.githubusercontent.com;font-src 'self' data: https://*.googleapis.com https://*.gstatic.com https://*.cdn-plain.com;form-action 'self' https://api.nango.dev;frame-src 'self' https://accounts.google.com https://app.nango.dev https://api.nango.dev https://connect.nango.dev https://connect.nango.dev/ https://www.youtube.com https://*.stripe.com;img-src 'self' data: blob: https://app.nango.dev https://api.nango.dev https://*.google-analytics.com https://*.googleapis.com https://*.posthog.com https://img.logo.dev https://*.ytimg.com https://*.plain.com;manifest-src 'self';media-src 'self';object-src 'self';script-src 'self' 'unsafe-eval' 'unsafe-inline' https://app.nango.dev https://api.nango.dev https://*.stripe.com https://*.google-analytics.com https://*.googleapis.com https://apis.google.com https://*.posthog.com https://www.youtube.com https://*.cdn-plain.com;style-src blob: 'self' 'unsafe-inline' https://*.googleapis.com https://app.nango.dev https://api.nango.dev;worker-src blob: 'self' https://app.nango.dev https://api.nango.dev https://*.googleapis.com https://*.posthog.com;base-uri 'self';frame-ancestors 'self';script-src-attr 'none';upgrade-insecure-requests",
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "Authorization, Etag, Content-Type, Content-Length, X-Nango-Signature, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-Nango-Invocation-Id",
+          "x-ratelimit-limit": "200",
+          "x-ratelimit-remaining": "196",
+          "x-ratelimit-reset": "1791448781",
+          "cache-control": "private",
+          "request-id": "7e3c4575-9c49-4167-ab83-6d8464f9d4a3",
+          "client-request-id": "7e3c4575-9c49-4167-ab83-6d8464f9d4a3",
+          "x-ms-ags-diagnostic": "{\"ServerInfo\":{\"DataCenter\":\"West US 2\",\"Slice\":\"E\",\"Ring\":\"4\",\"ScaleUnit\":\"004\",\"RoleInstance\":\"MW2PEPF0001424C\"}}"
+        },
+        "request": {
+          "params": {
+            "$select": "id,name,contentType,size,isInline"
+          }
+        }
+      }
+    }
+  }
+}

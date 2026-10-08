@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   connectionsToRenew,
   disconnectExplanation,
+  failedConnectNotice,
   lastSyncText,
   nextStepText,
   noticeForError,
@@ -76,6 +77,11 @@ describe('notices', () => {
     expect(statusText(connection({ status: 'expired', statusReason: 'account_mismatch' }))).toMatch(
       /ander account/,
     );
+  });
+
+  it('points Outlook users to their IT administrator when connecting fails', () => {
+    expect(failedConnectNotice('outlook').text).toMatch(/IT-beheerder/);
+    expect(failedConnectNotice('gmail')).toEqual(notices.failed);
   });
 
   it('tells the user what to do per status', () => {

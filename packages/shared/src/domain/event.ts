@@ -10,6 +10,13 @@ import { type EventType, eventEntityRoles, eventSources, linkedByValues } from '
 /** An ID or document number at a provider ("2026-0042"); not free text. */
 const providerCode = z.string().regex(/^[\w.:/#-]{1,128}$/);
 
+/**
+ * A reference to an attachment at the mail provider, to fetch it later:
+ * Gmail's partId ("1.2") or Outlook's attachment id, a base64 string of often
+ * 150+ characters with "=" and "+" (#088).
+ */
+export const providerAttachmentIdSchema = z.string().regex(/^[\w.:/#=+-]{1,512}$/);
+
 const emailPayload = z.strictObject({
   attachmentCount: z.int().min(0).max(1000).optional(),
   /** System labels from a fixed list; never names of the user's own labels. */
@@ -54,7 +61,7 @@ export const attachmentMetaSchema = z.strictObject({
   name: z.string().min(1).max(255),
   mimeType: z.string().regex(/^[\w.+-]+\/[\w.+-]+$/),
   size: z.int().min(0),
-  providerAttachmentId: providerCode,
+  providerAttachmentId: providerAttachmentIdSchema,
 });
 export type AttachmentMeta = z.infer<typeof attachmentMetaSchema>;
 
