@@ -5,9 +5,9 @@ import {
   AttachmentList,
   attachmentsOf,
   DeltaPage,
+  deltaEntryOf,
   type GraphMessage,
   InboxMessage,
-  isRemovedEntry,
   MESSAGE_SELECT,
   requestOfLink,
   toInboxMessage,
@@ -21,8 +21,8 @@ import {
 // resume a round or the deltaLink to start the next ('' = start over).
 // Deletes: Graph reports `@removed` (reason "deleted") both when a message is
 // deleted and when it merely leaves the inbox (archived, moved). So each one
-// is looked up: gone, or in Deleted Items or Junk → batchDelete; elsewhere →
-// nothing, the mail still exists. An expired delta token (410) starts over
+// is looked up by its immutable id: gone, or in Deleted Items or Junk →
+// batchDelete; elsewhere → nothing, the mail still exists. An expired delta token (410) starts over
 // with 14 days; the app ignores mail it already has (§4.4).
 
 const BACKFILL_DAYS = 14;
@@ -49,9 +49,14 @@ const sync = createSync({
   scopes: ['offline_access', 'User.Read', 'Mail.Read'],
 
   exec: async (nango) => {
+    // Immutable ids on every call: a default Graph id changes when a message
+    // moves to another folder, so an archived message would look deleted
+    // (seen in a dry run, 2026-10-08). Immutable ids stay while the message
+    // stays in the mailbox (https://learn.microsoft.com/graph/outlook-immutable-id).
+    const immutable = { Prefer: 'IdType="ImmutableId"' };
     const headers = {
       // Text instead of HTML, so the HTML body never reaches the function.
-      Prefer: `outlook.body-content-type="text", odata.maxpagesize=${PAGE_SIZE}`,
+      Prefer: `IdType="ImmutableId", outlook.body-content-type="text", odata.maxpagesize=${PAGE_SIZE}`,
     };
 
     /** The ids of Deleted Items and Junk: a message moved there is gone for us. */
@@ -62,6 +67,7 @@ const sync = createSync({
           // https://learn.microsoft.com/graph/api/mailfolder-get
           endpoint: `/v1.0/me/mailFolders/${name}`,
           params: { $select: 'id' },
+          headers: immutable,
           retries: 3,
         });
         ids.add(FolderSchema.parse(response.data).id);
@@ -76,6 +82,7 @@ const sync = createSync({
           // https://learn.microsoft.com/graph/api/message-get
           endpoint: `/v1.0/me/messages/${encodeURIComponent(id)}`,
           params: { $select: 'parentFolderId' },
+          headers: immutable,
           retries: 3,
         });
         const { parentFolderId } = LocationSchema.parse(response.data);
@@ -92,6 +99,7 @@ const sync = createSync({
         // https://learn.microsoft.com/graph/api/message-list-attachments
         endpoint: `/v1.0/me/messages/${encodeURIComponent(message.id)}/attachments`,
         params: { $select: ATTACHMENT_SELECT },
+        headers: immutable,
         retries: 3,
       });
       return attachmentsOf(AttachmentList.parse(response.data).value);
@@ -101,9 +109,10 @@ const sync = createSync({
     async function takeIn(page: DeltaPage, backfill: boolean, gone: () => Promise<Set<string>>) {
       const messages: GraphMessage[] = [];
       const removedIds: string[] = [];
-      for (const entry of page.value) {
-        if (isRemovedEntry(entry)) removedIds.push(entry.id);
-        else if (!entry.isDraft) messages.push(entry);
+      for (const raw of page.value) {
+        const entry = deltaEntryOf(raw);
+        if (entry.kind === 'removed') removedIds.push(entry.id);
+        else if (entry.kind === 'message' && !entry.message.isDraft) messages.push(entry.message);
       }
 
       const records: InboxMessage[] = [];

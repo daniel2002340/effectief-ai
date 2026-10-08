@@ -481,7 +481,7 @@ Ook gebouwd: `gen_uuid_v7()` (0004), `unique (organization_id, user_id)` op `mem
 | `cc_addresses` | text[] null | Kleine letters, alleen adressen; voor "antwoord aan allen" | P |
 | `subject` | text null | | I |
 | `body_text` | text null | Platte tekst (HTML in de Nango-function omgezet, resterende tags en base64-blokken eruit), max. 32.000 tekens. Quotes en handtekeningen staan er nog in (docs/todo.md) | I |
-| `attachments` | jsonb null | `[{ name, mimeType, size, providerAttachmentId }]`; bestanden zelf blijven bij de provider. Gmail: `providerAttachmentId` is het `partId` (Gmail's attachment-ID verandert per ophaalactie) | I |
+| `attachments` | jsonb null | `[{ name, mimeType, size, providerAttachmentId }]`; bestanden zelf blijven bij de provider. Gmail: `providerAttachmentId` is het `partId` (Gmail's attachment-ID verandert per ophaalactie); Outlook: het (immutable) attachment-ID van Graph, ±170 tekens base64, daarom een eigen patroon van max. 512 tekens met `=` en `+` (#088) | I |
 | `retain_until` | timestamptz not null | `occurred_at` + bewaartermijn van de tenant | — |
 | `created_at` | timestamptz | | — |
 

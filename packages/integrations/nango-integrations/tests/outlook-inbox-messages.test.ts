@@ -206,7 +206,7 @@ describe('outlook inbox-messages sync', () => {
     expect(first?.params.$select).toContain('body');
     expect(first?.params.$filter).toMatch(/^receivedDateTime ge \d{4}-\d{2}-\d{2}T/);
     expect(first?.headers).toEqual({
-      Prefer: 'outlook.body-content-type="text", odata.maxpagesize=50',
+      Prefer: 'IdType="ImmutableId", outlook.body-content-type="text", odata.maxpagesize=50',
     });
     expect(saved.map((record) => [record.id, record.backfill])).toEqual([
       ['m1', true],

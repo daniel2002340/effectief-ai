@@ -2,7 +2,7 @@
 
 Ontwerp voor sessie 4: Gmail en Outlook koppelen via Nango en nieuwe mail binnenhalen tot `events` + bron-inhoud. Geen AI en geen kaarten uit mail; dat is sessie 5.
 
-**Status:** stap 1–4 van §10 gebouwd voor Gmail: Nango-basis, koppelen (Gmail en Outlook), inlezen (Gmail, end-to-end op staging) en de levenscyclus (§5, met `pre-connection-deletion` voor Gmail). Stap 5 (Outlook inlezen en levenscyclus) volgt. Staging gebruikt voorlopig Nango's testapps (#082). Afwijkingen in de bouw: #084, #085, #087. Beslissingen: #074–#084; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
+**Status:** stap 1–5 van §10 gebouwd: Nango-basis, koppelen, inlezen en de levenscyclus (§5), voor Gmail end-to-end op staging en voor Outlook met een eigen Entra-app en echte fixtures (doorloop op staging volgt). Staging gebruikt voorlopig Nango's testapps (#082). Afwijkingen in de bouw: #084, #085, #087, #088. Beslissingen: #074–#084; de open vragen zijn beantwoord (§8, #080). Bouwt voort op #005, #008, #013, #020, #037, #038, #044, #051, #052 en #073 en op wat er in `packages/db` staat. Waar dit ontwerp daarvan afwijkt, staat dat in [§9](#9-afwijkingen-van-het-bestaande-ontwerp).
 
 Inhoud:
 
@@ -274,11 +274,15 @@ Sync Strategy Gate uit de skill:
 - Deletes: expliciet uit de history (`messagesDeleted`, `labelAdded: TRASH/SPAM`), geen `trackDeletes*` (dat mag niet bij een changed-only checkpoint).
 - Frequentie: elke 5 minuten. Realtime via Pub/Sub (Nango ondersteunt het) later.
 
-**`outlook` / `inbox-messages`**
+**`outlook` / `inbox-messages`** (gebouwd, #088)
 - Change source: Graph delta query op `/me/mailFolders/inbox/messages/delta`, zoals het template.
-- Checkpoint: `{ deltaLink | nextLink }`.
-- Eerste keer: `$filter=receivedDateTime ge <nu − 14 dagen>`, `$select` met alleen de velden uit §3.1, header `Prefer: outlook.body-content-type="text"`.
-- Deletes: `@removed` in de delta. Graph meldt zo ook berichten die alleen uit de inbox verplaatst zijn (archiveren). De function controleert per `@removed` met `GET /me/messages/{id}?$select=parentFolderId`: 404 of de map "Verwijderde items" → `batchDelete()`; een andere map → niets. Dit gedrag leggen we eerst vast met een echte payload als fixture (CLAUDE.md, Integraties), want de Graph-docs zijn er niet eenduidig over.
+- Checkpoint: plat `{ link, backfill }`: `link` is de `nextLink` (ronde hervatten) of de `deltaLink` (volgende ronde), `''` = opnieuw beginnen; `backfill` is `true` tot de eerste `deltaLink`.
+- Eerste keer: `$filter=receivedDateTime ge <nu − 14 dagen>`, `$select` met alleen de velden uit §3.1, header `Prefer: IdType="ImmutableId", outlook.body-content-type="text", odata.maxpagesize=50`. Stuurt Graph toch HTML, dan zet de function die om naar tekst (gedeelde `shared/text.ts`).
+- **Immutable IDs** op elke call (`Prefer: IdType="ImmutableId"`): de gewone Graph-ID verandert als een bericht naar een andere map gaat. In een dry run gaf het opzoeken van een gearchiveerd bericht daardoor 404, en zou het als verwijderd gelden. Een immutable ID blijft gelijk zolang het bericht in de mailbox blijft; alleen naar een apart archiefpostvak (online archive) of exporteren/importeren verandert hem, en dan geldt het bericht als verwijderd.
+- Drie soorten entries in de delta (vastgelegd met echte fixtures): `@removed` (`reason: "deleted"`, ook bij verplaatsen of archiveren); een heel bericht (nieuw in de inbox); alleen `id` + gewijzigde velden zoals `isRead` (wijziging aan een bericht dat we al hebben: overslaan, §4.4).
+- Deletes: per `@removed` `GET /me/messages/{id}?$select=parentFolderId` (immutable ID): 404, of de map Verwijderde items of Ongewenste e-mail (map-ID's via `mailFolders/deleteditems` en `junkemail`) → `batchDelete()`; een andere map (archief) → niets.
+- Concepten in de inbox (`isDraft`) slaan we over. Bijlagen: alleen als `hasAttachments`, `GET /messages/{id}/attachments?$select=id,name,contentType,size,isInline`, zonder inline-afbeeldingen; het bijlage-ID is ±170 tekens base64 (#088).
+- Verlopen of ongeldig delta-token: 410 (`SyncStateInvalid`, gezien bij de overstap naar immutable IDs) → opnieuw 14 dagen; dubbele berichten vangt de app op (§4.4).
 - Frequentie: elke 5 minuten. Realtime via Graph-subscriptions later.
 
 Beide: `retries: 3` per provider-call, geen `endpoints`-veld, `autoStart: true` (geen metadata nodig), 14 dagen als constante in de function (een andere termijn is een nieuwe versie). Elke function met fixture-tests (`nango dryrun --save` met Daniëls eigen mailbox op staging, daarna geanonimiseerd, #073).
@@ -468,7 +472,7 @@ Gebruiker klikt "Ontkoppelen" en bevestigt → `connections.disconnect` (de kopp
    2. Vóór dat verwijderen draait bij Nango de event function **`pre-connection-deletion`**:
       - **Gmail** (`nango-integrations/gmail/on-events/pre-connection-deletion.ts`): `POST https://oauth2.googleapis.com/revoke` met het refresh-token (anders het access-token) trekt de hele toestemming bij Google in. Het token blijft binnen Nango; onze code ziet het nooit. 400 (`invalid_token`: al ingetrokken of verlopen) is goed. Elke andere fout logt de function zonder token of foutbody, en het verwijderen gaat door: de function gooit nooit.
       - **Let op bij testen:** lokaal en staging gebruiken dezelfde OAuth-app (Nango's testapp, #082). Intrekken bij Google trekt de toestemming voor die app in, dus ook die van een andere connectie op dezelfde mailbox (bijv. lokaal). Die gaat daarna op `refresh` mislukt → `expired`; opnieuw koppelen lost het op.
-      - **Outlook:** Microsoft heeft geen endpoint waarmee een app zijn eigen gedelegeerde toestemming voor één gebruiker intrekt zonder admin-rechten (`oauth2PermissionGrant` verwijderen vraagt `DelegatedPermissionGrant.ReadWrite.All`; `revokeSignInSessions` logt de gebruiker overal uit). Nog te verifiëren in de Microsoft-docs (§10 stap 5). Dus: tokens verdwijnen bij Nango, en de bevestiging in de app zegt "Wil je de toegang ook bij Microsoft weghalen? Ga naar myapps.microsoft.com (werkaccount) of account.live.com/consent/Manage (persoonlijk account)".
+      - **Outlook:** Microsoft heeft geen endpoint waarmee een app zijn eigen gedelegeerde toestemming voor één gebruiker intrekt zonder admin-rechten (`oauth2PermissionGrant` verwijderen vraagt `DelegatedPermissionGrant.ReadWrite.All`; `revokeSignInSessions` logt de gebruiker overal uit). Nagekeken in de Microsoft-docs (2026-10-08, `oauth2permissiongrant-delete`): beheerdersrol nodig, en bij persoonlijke accounts helemaal niet mogelijk. Dus geen `pre-connection-deletion` voor Outlook: tokens verdwijnen bij Nango, en de bevestiging in de app zegt "Wil je de toegang ook bij Microsoft weghalen? Ga naar myapps.microsoft.com (werkaccount) of account.live.com/consent/Manage (persoonlijk account)".
    3. `purgeConnection()`: kaarten, events (cascade: `event_contents`, `event_entities`), `entity_external_refs`, documenten, `sync_cursors` en losse entiteiten → `purged`, `account_label = null`. De audit-regel bevat alleen provider, reden en aantallen.
 3. Late webhooks voor deze connectie vinden via `resolve_connection()` een `revoked`/`purged` grafsteen en doen niets.
 4. Dezelfde mailbox opnieuw koppelen: een nieuwe connectie (§2.4).
@@ -502,11 +506,13 @@ Per environment een eigen OAuth-app: staging en prod elk een eigen Google Cloud-
 
 | | |
 |---|---|
-| Scopes nu | `offline_access`, `User.Read` (voor `/me`: account-ID en adres), `Mail.Read` (gedelegeerd). **Niet** Nango's standaard `.default` (= alles wat in de app-registratie staat): expliciete scopes in de integratie zetten |
+| Scopes nu | `offline_access`, `User.Read` (voor `/me`: account-ID en adres), `Mail.Read` (gedelegeerd). **Niet** Nango's standaard `.default` (= alles wat in de app-registratie staat): expliciete scopes in de integratie zetten. Een scope die het Nango-dashboard niet voorstelt (zoals `User.Read`) typ je zelf in |
+| Staging | Eigen Entra-app "EffectiefAI staging" (sinds 2026-10-08, #088), redirect-URI `https://api.nango.dev/oauth/callback` onder platform **Web**. Nango heeft inmiddels wel een eigen Microsoft-app ("Nango provided"), maar die vraagt vaste scopes zonder `User.Read` (wel `Mail.Send`, `Mail.ReadWrite`, `Calendars.ReadWrite`, …): `/me` geeft dan 403 en `validate-connection` weigert de koppeling |
 | Scope later | `Mail.Send` voor versturen |
 | Accounttypes | App-registratie "Accounts in any organizational directory and personal Microsoft accounts" (Nango gebruikt `/common`), dus werk- (Microsoft 365) én persoonlijke accounts (outlook.com, hotmail.com) |
 | Admin consent | `Mail.Read`, `Mail.Send` en `User.Read` vragen standaard **geen** admin consent. Maar veel organisaties staan gebruikers alleen toe om toestemming te geven aan apps van een **geverifieerde uitgever** (standaardbeleid van Microsoft voor nieuwe tenants), of helemaal niet. Dan ziet de gebruiker "Goedkeuring van beheerder vereist". Daarom **Publisher Verification** (#008, staat in todo); voor klanten met een strenge tenant een korte instructie voor hun IT-beheerder (admin-consent-link `https://login.microsoftonline.com/<tenant>/adminconsent?client_id=…`). Te verifiëren in de Microsoft-docs tijdens de bouw |
-| Client secret | Verloopt (max. 24 maanden; de Nango-gids zegt bij "Custom" max. 1 jaar): vervaldatum in de agenda en in docs/todo.md zodra hij er is |
+| Client secret | Verloopt (max. 24 maanden; de Nango-gids zegt bij "Custom" max. 1 jaar): vervaldatum in de agenda en in docs/todo.md |
+| Account-ID | `/me` `id`: een GUID bij werkaccounts, een korte hex-ID bij persoonlijke accounts. Een persoonlijk Microsoft-account op een ander adres (bijv. Gmail) heeft geen eigen inbox met die mail; mail naar dat adres komt bij die andere provider binnen |
 
 ---
 
@@ -580,9 +586,13 @@ packages/integrations/
       actions/account-info.ts
       on-events/validate-connection.ts
       on-events/pre-connection-deletion.ts
-      tests/ + mocks/          fixtures uit nango dryrun --save, geanonimiseerd
     outlook/
-      (zelfde indeling)
+      syncs/inbox-messages.ts
+      actions/account-info.ts
+      on-events/validate-connection.ts
+      helpers/message.ts
+    shared/                    recordmodel InboxMessage en tekstfuncties, voor beide syncs
+    tests/ + tests/fixtures/   fixtures uit nango dryrun --save, geanonimiseerd (scripts/anonymize-*-mocks.ts)
   src/nango/                   client, webhook-schema's, record-schema's (Zod), normalisatie
 ```
 
@@ -645,4 +655,4 @@ Volgens CLAUDE.md: één integratie end-to-end voordat de volgende begint. Voors
 2. **Koppelen (Gmail):** redirect `/oauth/callback` in Caddy, `connect_attempts` + `resolve_connect_attempt()`, procedures, Connect UI in web, `account-info` en `validate-connection` in nango-integrations, CI-compile en deploy naar staging.
 3. **Inlezen (Gmail):** sync `inbox-messages` met fixtures, `sync_cursors`, `mail-ingest` + vangnet, normalisatie, prune; end-to-end op staging met Daniëls mailbox.
 4. **Levenscyclus:** refresh/override/deletion, kaart "Koppeling vernieuwen", ontkoppelen met Nango-delete en `pre-connection-deletion`. Gebouwd (#084, #087); op staging doorlopen op 2026-10-07 (§5.3).
-5. **Outlook:** dezelfde stappen 2–4 voor Outlook, met eerst een fixture van het `@removed`-gedrag.
+5. **Outlook:** dezelfde stappen 2–4 voor Outlook, met eerst een fixture van het `@removed`-gedrag. Gebouwd (#088): koppelen op staging met een eigen Entra-app, sync met echte fixtures; de doorloop op staging staat in docs/todo.md.

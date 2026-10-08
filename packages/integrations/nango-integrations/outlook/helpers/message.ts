@@ -53,15 +53,34 @@ export const GraphMessage = z.object({
 });
 export type GraphMessage = z.infer<typeof GraphMessage>;
 
-/** An entry of a delta page: a message, or a notice that it left the folder. */
-export const DeltaEntry = z.union([
-  z.object({ id: z.string(), '@removed': z.object({ reason: z.string() }) }),
-  GraphMessage,
-]);
-export type DeltaEntry = z.infer<typeof DeltaEntry>;
+const RemovedEntry = z.object({ id: z.string(), '@removed': z.object({ reason: z.string() }) });
+const ChangedEntry = z.object({ id: z.string() });
+
+/**
+ * What an entry of a delta page means. Graph sends three shapes:
+ * - `@removed`: the message left the folder (deleted, or moved, archived);
+ * - a whole message (with `receivedDateTime`): new in the folder;
+ * - only the id and what changed, such as `isRead`: a change to a message we
+ *   already have (seen in a dry run, 2026-10-08; the docs name read state
+ *   changes but not their shape). Nothing to take in: the app keeps mail it
+ *   already has as it is (docs/integrations.md §4.4).
+ */
+export type DeltaEntry =
+  | { kind: 'removed'; id: string }
+  | { kind: 'message'; message: GraphMessage }
+  | { kind: 'changed'; id: string };
+
+export function deltaEntryOf(raw: unknown): DeltaEntry {
+  const removed = RemovedEntry.safeParse(raw);
+  if (removed.success) return { kind: 'removed', id: removed.data.id };
+  if (raw && typeof raw === 'object' && 'receivedDateTime' in raw) {
+    return { kind: 'message', message: GraphMessage.parse(raw) };
+  }
+  return { kind: 'changed', id: ChangedEntry.parse(raw).id };
+}
 
 export const DeltaPage = z.object({
-  value: z.array(DeltaEntry),
+  value: z.array(z.unknown()),
   '@odata.nextLink': z.string().optional(),
   '@odata.deltaLink': z.string().optional(),
 });
@@ -76,10 +95,6 @@ export const GraphAttachment = z.object({
 });
 export const AttachmentList = z.object({ value: z.array(GraphAttachment) });
 export type GraphAttachment = z.infer<typeof GraphAttachment>;
-
-export const isRemovedEntry = (
-  entry: DeltaEntry,
-): entry is Extract<DeltaEntry, { '@removed': unknown }> => '@removed' in entry;
 
 const addressesOf = (recipients: z.infer<typeof Recipient>[] | null | undefined) =>
   (recipients ?? [])
