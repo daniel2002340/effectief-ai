@@ -34,17 +34,20 @@ function withoutDescriptions(value: unknown): unknown {
 }
 
 describe('inboxMessageSchema', () => {
-  it.each(['gmail'])('matches the %s inbox-messages model in the Nango function', (provider) => {
-    const integrations = nangoDefinitions.parse(JSON.parse(readFileSync(nangoJson, 'utf8')));
-    const sync = integrations
-      .find((integration) => integration.providerConfigKey === provider)
-      ?.syncs.find((candidate) => candidate.name === 'inbox-messages');
-    expect(sync).toBeDefined();
-    const fromNango = sync?.json_schema.definitions[INBOX_MESSAGE_MODEL];
-    expect(withoutDescriptions(fromNango)).toEqual(
-      withoutDescriptions(z.toJSONSchema(inboxMessageSchema, { target: 'draft-7' })),
-    );
-  });
+  it.each(['gmail', 'outlook'])(
+    'matches the %s inbox-messages model in the Nango function',
+    (provider) => {
+      const integrations = nangoDefinitions.parse(JSON.parse(readFileSync(nangoJson, 'utf8')));
+      const sync = integrations
+        .find((integration) => integration.providerConfigKey === provider)
+        ?.syncs.find((candidate) => candidate.name === 'inbox-messages');
+      expect(sync).toBeDefined();
+      const fromNango = sync?.json_schema.definitions[INBOX_MESSAGE_MODEL];
+      expect(withoutDescriptions(fromNango)).toEqual(
+        withoutDescriptions(z.toJSONSchema(inboxMessageSchema, { target: 'draft-7' })),
+      );
+    },
+  );
 
   it('refuses fields beyond the model, such as HTML', () => {
     const record = {

@@ -3,7 +3,7 @@ import type { SyncModel } from './status.ts';
 
 // A record of the Nango sync `inbox-messages` (docs/integrations.md §3.1,
 // decision #074). The same model is defined in the Nango function
-// (packages/integrations/nango-integrations/gmail/helpers/message.ts), which
+// (packages/integrations/nango-integrations/shared/inbox-message.ts), which
 // cannot import workspace packages; inbox-message.test.ts compares the two
 // through the JSON schema `nango compile` writes. Only extend it, never break
 // it: staging and local share the deployed function.

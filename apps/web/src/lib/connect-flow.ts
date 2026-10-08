@@ -20,6 +20,10 @@ export const notices = {
   connected: { tone: 'success', text: 'Je mailbox is gekoppeld.' },
   cancelled: { tone: 'info', text: 'Koppelen afgebroken. Er is niets gekoppeld.' },
   failed: { tone: 'error', text: 'Koppelen is mislukt. Probeer het opnieuw.' },
+  failedOutlook: {
+    tone: 'error',
+    text: 'Koppelen is mislukt. Bij een werkaccount van Microsoft moet je IT-beheerder EffectiefAI soms eerst toestaan. Probeer het opnieuw, of vraag het je beheerder.',
+  },
   duplicate: {
     tone: 'error',
     text: 'Deze mailbox is al gekoppeld. Werkt die koppeling niet meer? Kies dan "Koppeling vernieuwen" bij die mailbox.',
@@ -54,6 +58,14 @@ export function noticeForError(error: unknown): Notice {
     if (error.status === 503) return notices.unavailable;
   }
   return notices.failed;
+}
+
+/**
+ * The Connect UI reported a failure. Many Microsoft 365 organizations only let
+ * users consent to apps of a verified publisher, or not at all (§6.2).
+ */
+export function failedConnectNotice(provider: MailProvider): Notice {
+  return provider === 'outlook' ? notices.failedOutlook : notices.failed;
 }
 
 export function noticeForOutcome(outcome: CompleteConnectOutput): Notice | undefined {

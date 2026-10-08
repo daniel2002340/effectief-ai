@@ -3,12 +3,12 @@ import { changesOf } from '../gmail/helpers/history.js';
 import {
   BODY_TEXT_MAX,
   type GmailMessage,
-  htmlToText,
   InboxMessage,
   isInboxMail,
   parseAddressList,
   toInboxMessage,
 } from '../gmail/helpers/message.js';
+import { htmlToText } from '../shared/text.js';
 
 // The pure parts of the Gmail sync, with hand-made messages. The behaviour on
 // real (anonymized) Gmail responses is in inbox-messages.test.ts.

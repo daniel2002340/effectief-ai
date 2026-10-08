@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   disconnectExplanation,
+  failedConnectNotice,
   lastSyncText,
   mailProviderList,
   type Notice,
@@ -100,7 +101,7 @@ function ConnectionsPage() {
           setBusy(false);
         },
         error: (cause) => {
-          setNotice(cause ? noticeForError(cause) : notices.failed);
+          setNotice(cause ? noticeForError(cause) : failedConnectNotice(provider));
           setBusy(false);
         },
       },

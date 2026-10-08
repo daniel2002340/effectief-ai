@@ -227,6 +227,35 @@ describe('processMailIngestJob', () => {
     expect(asked).toEqual([]);
   });
 
+  it('reads an Outlook connection from the outlook integration, as source outlook', async () => {
+    const connection = await asA((tx) => createTestConnection(tx, A, 'outlook'));
+    const refs: { integrationId: string; connectionId: string }[] = [];
+    const nango = createFakeNango({
+      listRecords: async (ref) => {
+        refs.push(ref);
+        return refs.length === 1
+          ? { records: [record(message('AAMkAGI2THVSAAA=outlook-1'), 'o1')], nextCursor: undefined }
+          : { records: [], nextCursor: undefined };
+      },
+      pruneRecords: async () => ({ count: 1 }),
+    });
+    expect(
+      await processMailIngestJob(
+        { tenantId: A.tenantId, connectionId: connection.id },
+        { jobId: 'j-outlook' },
+        { db: db.app.db, nango, log, reportError: noReport },
+      ),
+    ).toMatchObject({ result: 'ingested', created: 1 });
+    expect(refs[0]).toEqual({
+      integrationId: 'outlook',
+      connectionId: connection.nangoConnectionId,
+    });
+    const [event] = await asA((tx) =>
+      tx.select().from(schema.events).where(eq(schema.events.connectionId, connection.id)),
+    );
+    expect(event).toMatchObject({ source: 'outlook', externalId: 'AAMkAGI2THVSAAA=outlook-1' });
+  });
+
   it('fails the job when pruning fails, with the pages already taken in', async () => {
     const connection = await asA((tx) => createTestConnection(tx, A));
     const nango = createFakeNango({

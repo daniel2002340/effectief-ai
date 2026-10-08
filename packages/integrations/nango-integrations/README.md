@@ -1,10 +1,12 @@
 # nango-integrations
 
-De functions die Nango voor ons draait (beslissing #079, docs/integrations.md §7.5): per integratie `syncs/`, `actions/` en `on-events/`, plus `helpers/` voor gedeelde code. `index.ts` importeert alles wat Nango compileert en deployt.
+De functions die Nango voor ons draait (beslissing #079, docs/integrations.md §7.5): per integratie `syncs/`, `actions/` en `on-events/`, plus `helpers/`; `shared/` bevat het recordmodel `InboxMessage` en de tekstfuncties die Gmail en Outlook delen. `index.ts` importeert alles wat Nango compileert en deployt.
 
 | Integratie | Function | Wat |
 |---|---|---|
 | `gmail` | `syncs/inbox-messages` | Nieuwe mail in de inbox, elke 5 minuten (§3.1–§3.2) |
+| `outlook` | `syncs/inbox-messages` | Idem via Graph delta; verwijderd of in Ongewenste e-mail → weg, gearchiveerd → blijft (§3.2) |
+| `gmail` | `on-events/pre-connection-deletion` | Toegang bij Google intrekken bij ontkoppelen (§5.3) |
 | `gmail`, `outlook` | `actions/account-info` | Welk account een connectie leest (§2.4) |
 | `gmail`, `outlook` | `on-events/validate-connection` | Opnieuw koppelen alleen met hetzelfde account (§2.4) |
 

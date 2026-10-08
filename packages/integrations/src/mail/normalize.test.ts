@@ -99,3 +99,45 @@ describe('normalizeAddresses', () => {
     ]);
   });
 });
+
+describe('normalizeInboxMessage on an Outlook record', () => {
+  // Graph ids are long base64 strings with "=", "+" and "-" (hand-made in that shape).
+  const messageId = `AAMkAGI2THVSAAA=${'A'.repeat(120)}-Bq+x`;
+  const attachmentId = `AAMkAGI2THVSAAABEgAQAMkpJI_X-LBFgvrv1PlZYd8=${'B'.repeat(100)}`;
+
+  it('keeps the long message and attachment ids of Outlook', () => {
+    const message = parseInboxRecord({
+      id: messageId,
+      threadId: 'AAQkAGI2THVSAAAQAPMr0pJdh8hPq0fF8NiRXZ4=',
+      receivedAt: '2026-10-06T08:00:00.000Z',
+      from: { address: 'Jan@Klant.example', name: 'Jan Klant' },
+      to: ['info@bedrijf.example'],
+      cc: [],
+      subject: 'Offerte',
+      bodyText: 'Kunt u een offerte sturen?',
+      labels: ['INBOX', 'UNREAD'],
+      attachments: [
+        { name: 'offerte.pdf', mimeType: 'application/pdf', size: 1234, attachmentId },
+        {
+          name: 'raar.bin',
+          mimeType: 'application/octet-stream',
+          size: 1,
+          attachmentId: 'met spatie',
+        },
+      ],
+      backfill: false,
+    });
+    expect(message).toBeDefined();
+    if (!message) return;
+    const mail = normalizeInboxMessage(message, { source: 'outlook', connectionId });
+    expect(mail?.event.event).toMatchObject({ source: 'outlook', externalId: messageId });
+    expect(mail?.event.content?.attachments).toEqual([
+      {
+        name: 'offerte.pdf',
+        mimeType: 'application/pdf',
+        size: 1234,
+        providerAttachmentId: attachmentId,
+      },
+    ]);
+  });
+});
